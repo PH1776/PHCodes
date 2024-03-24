@@ -1,0 +1,628 @@
+/*
+ * R e a d m e
+ * -----------
+ * 
+ * In this file you can include any instructions or other comments you want to have injected onto the 
+ * top of your final script. You can safely delete this file if you do not want any such comments.
+ */
+
+string Channel = "DTS";
+int SpeedLimit = 50;
+int DockingSpeedLimit = 20;
+/*
+        List of commands (arguments to run)
+        RESET       Resets the drone to default
+        SWITCH      Switch Deploy mode to patrol mode and vice versa
+        IGC         Enable sending information over Antenna (Default is off, enable if you want to use deploy mode)
+        OFF         Shutdowns the drone (Use only for temporary shutdown)
+        ON          Starts the drone (Use for countering the OFF command and Intializing the drone after setup
+
+                SetCommands: (They work only if drone is not active)
+        SETB        Sets position of base connector (HomePosition)
+        SETB1       Sets the position above connetor (AboveHome) (Set it at least 40m above)
+        SETP        Sets the Patrol position (Repeat for next point)
+        SETPD       Finishes the Patrol setup (For Patrol mode you have to have at least 2 positions set)
+        */
+Vector3D ConnectorPos;
+bool ConnectorPosSet;
+Vector3D TargetDir;
+Vector3D AboveHome;
+bool AboveHomeSet;
+List<Vector3D> PatrolRoute = new List<Vector3D>();
+bool PatrolRouteSet;
+Vector3D AttackPos;
+Vector3D TargetPos;
+Vector3D Placer;
+Vector3D EmptyVector = new Vector3D();
+enum Stance
+{
+    attacking,
+    docking,
+    returning,
+    working,
+    waiting,
+}
+
+Stance CurrentStance;
+WorkType CurrentWorkType;
+enum WorkType
+{
+    Patrol,
+    Deploy,
+}
+bool OMW = false;
+bool Active;
+float Power;
+float Totalpower;
+float Maxpower;
+decimal PowerD;
+int PatrolNum;
+double distance;
+double distanceTT;
+double Vmulti;
+List<string> Data = new List<string>();
+bool UseIGCforPatrol = false;
+int DetectCounter;
+
+
+MyIGCMessage packet = new MyIGCMessage();
+List<IMyBroadcastListener> listeners = new List<IMyBroadcastListener>();
+IMyRemoteControl remote;
+List<IMyBatteryBlock> batteries = new List<IMyBatteryBlock>();
+IMyShipConnector connector;
+MyDetectedEntityInfo TargetEntity;
+IMyLargeTurretBase RefTurret;
+List<IMyLargeTurretBase> RefTurrets = new List<IMyLargeTurretBase>();
+List<IMyRemoteControl> Remotes = new List<IMyRemoteControl>();
+List<IMyShipConnector> Connectors = new List<IMyShipConnector>();
+public Program()
+{
+    GridTerminalSystem.GetBlocksOfType(Remotes, block => block.IsSameConstructAs(Me));
+    GridTerminalSystem.GetBlocksOfType(Connectors, block => block.IsSameConstructAs(Me));
+    remote = Remotes[0];
+    connector = Connectors[0];
+    Runtime.UpdateFrequency = UpdateFrequency.Update100;
+    IGC.RegisterBroadcastListener(Channel);
+    IGC.GetBroadcastListeners(listeners);
+    listeners[0].SetMessageCallback("NewTarget");
+    Data.Clear();
+    Data = Storage.Split(';').ToList();
+
+    if (Data.Count > 4)
+    {
+        UseIGCforPatrol = bool.Parse(Data[Data.Count - 1]);
+        Data.RemoveAt(Data.Count - 1);
+        CurrentStance = (Stance)Enum.Parse(typeof(Stance), Data[Data.Count - 1]);
+        Data.RemoveAt(Data.Count - 1);
+        CurrentWorkType = (WorkType)Enum.Parse(typeof(WorkType), Data[Data.Count - 1]);
+        Data.RemoveAt(Data.Count - 1);
+        Vector3D.TryParse(Data[Data.Count-1], out AboveHome);
+        Data.RemoveAt(Data.Count - 1);
+        Vector3D.TryParse(Data[Data.Count-1], out ConnectorPos);
+        Data.RemoveAt(Data.Count - 1);
+        if (Data.Count > 1)
+        {
+            PatrolRoute.Clear();
+            foreach (string line in Data)
+            {
+                Vector3D.TryParse(line, out Placer);
+                PatrolRoute.Add(Placer);
+
+            }
+            if (PatrolRoute.Count > 1)
+            {
+                PatrolRouteSet = true;
+            }
+        }
+        AboveHomeSet = true;
+        ConnectorPosSet = true;
+    }
+
+    remote.ClearWaypoints();
+    remote.SetAutoPilotEnabled(false);
+    remote.FlightMode = FlightMode.OneWay;
+    OMW = false;
+    PatrolNum = 0;
+    Main("ON",UpdateType.Terminal);
+
+}
+
+public void Save()
+{
+
+    Storage = string.Empty;
+    foreach (Vector3D vector in PatrolRoute)
+    {
+        Storage += vector.ToString() + ";";
+    }
+    Storage += ConnectorPos.ToString() + ";" + AboveHome.ToString() + ";" + CurrentWorkType.ToString() + ";" + CurrentStance.ToString() + ";" + UseIGCforPatrol.ToString();
+
+}
+
+public void Main(string argument, UpdateType updateSource)
+{
+    if (updateSource == UpdateType.Terminal || updateSource == UpdateType.Trigger)
+    {
+        if (argument == "RESET")
+        {
+            Active = false;
+            PatrolRouteSet = false;
+            AboveHomeSet = false;
+            ConnectorPosSet = false;
+            remote.ClearWaypoints();
+            remote.SetAutoPilotEnabled(false);
+            OMW = false;
+            CurrentStance = Stance.working;
+            CurrentWorkType = WorkType.Patrol;
+            PatrolNum = 0;
+            PatrolRoute.Clear();
+            Echo("Reset");
+        }
+        if (!Active)
+        {
+
+            switch (argument)
+            {
+                case "SETB":
+                    ConnectorPos = remote.GetPosition();
+                    ConnectorPosSet = true;
+                    Echo("Connector set");
+                    break;
+
+                case "SETB1":
+                    AboveHome = remote.GetPosition();
+                    AboveHomeSet = true;
+                    Echo("Above set");
+                    break;
+
+                case "SETP":
+                    PatrolRoute.Add(remote.GetPosition());
+                    Echo("Patrol" + PatrolRoute.Count.ToString());
+                    break;
+
+                case "SETPD":
+                    if (PatrolRoute.Count > 1)
+                    {
+                        PatrolRouteSet = true;
+                        Echo("Patrol setup Finished");
+                    }
+                    else
+                    {
+                        Echo("Set more than one waypoint");
+                    }
+                    break;
+
+                case "ON":
+
+                        if (AboveHomeSet == true && ConnectorPosSet == true)
+                        {
+                            if (CurrentWorkType == WorkType.Patrol)
+                            {
+                                if (PatrolRouteSet == true)
+                                {
+                                    Active = true;
+                                    Echo("Patrol mode Activated");
+                                    OMW = false;
+                                }
+                                else
+                                {
+                                    Echo("Patrol route not setup");
+                                }
+                            }
+                            else
+                            {
+                                Active = true;
+                                Echo("Deploy mode activated");
+                                OMW = false;
+
+
+                        }
+
+                        }
+                        else
+                        {
+                            Echo("Setup not finished");
+                        }
+
+
+                    break;
+
+                case "SWITCH":
+                    if (CurrentWorkType == WorkType.Patrol)
+                    {
+                        CurrentWorkType = WorkType.Deploy;
+                        Echo("Switched to Deploy mode");
+                    }
+                    else if (CurrentWorkType == WorkType.Deploy)
+                    {
+                        CurrentWorkType = WorkType.Patrol;
+                        Echo("Switched to Patrol mode");
+                    }
+                    break;
+
+                case "IGC":
+                    if (UseIGCforPatrol)
+                    {
+                        UseIGCforPatrol = false;
+                        Echo("IGC for Patrolmode OFF");
+                    }
+                    else
+                    {
+                        UseIGCforPatrol = true;
+                        Echo("IGC for Patrolmode ON");
+                    }
+                    break;
+
+
+            }
+
+        }
+        else if (argument == "OFF")
+        {
+            Active = false;
+            remote.ClearWaypoints();
+        }
+
+    }
+
+
+    if (Active)
+    {
+        Runtime.UpdateFrequency = UpdateFrequency.Update10;
+        if (CurrentWorkType.Equals(WorkType.Deploy))
+        {
+            Echo("OMW " + OMW.ToString());
+            Echo("CurrentStance" + CurrentStance.ToString());
+            EnergyUpdate();
+            Echo(CurrentWorkType.ToString() + " Mode");
+            DistanceCal();
+            if (!OMW)
+            {
+
+                switch (CurrentStance)
+                {
+                    case Stance.waiting:
+                        remote.SpeedLimit = SpeedLimit;
+                        if (connector.Status == MyShipConnectorStatus.Connected)
+                        {
+                            if (argument.Equals("NewTarget"))
+                            {
+                                TargetPos = EmptyVector;
+                                packet = listeners[0].AcceptMessage();
+                                Vector3D.TryParse((string)packet.Data, out TargetPos);
+
+                                if (Power > 0.4)
+                                {
+                                    Echo("TargetAccepted");
+                                    remote.SetDockingMode(false);
+                                    foreach (IMyBatteryBlock battery in batteries)
+                                    {
+                                        battery.ChargeMode = ChargeMode.Auto;
+                                    }
+                                    connector.Disconnect();
+
+                                    Go(AboveHome, false);
+                                }
+                                else
+                                {
+                                    Echo("Unable to pursue, low energy");
+                                    TargetPos = EmptyVector;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            CurrentStance = Stance.docking;
+                        }
+                        break;
+
+                    case Stance.docking:
+                        remote.SetDockingMode(true);
+                        remote.SpeedLimit = DockingSpeedLimit;
+                        Go(ConnectorPos, true);
+                        break;
+
+                    case Stance.returning:
+                        remote.SetDockingMode(true);
+                        Go(AboveHome, false);
+                        break;
+
+                    case Stance.working:
+                        if(connector.Status == MyShipConnectorStatus.Connected)
+                        {
+                            CurrentStance = Stance.waiting;
+                        }
+                        else
+                        {
+                            CurrentStance = Stance.returning;
+                        }
+                        break;
+
+
+                }
+
+            }
+            else if (OMW)
+            {
+
+                switch (CurrentStance)
+                {
+                    case Stance.docking:
+                        if (connector.Status == MyShipConnectorStatus.Connectable)
+                        {
+                            Rearming();
+                            OMW = false;
+                            CurrentStance = Stance.waiting;
+                        }
+                        break;
+
+                    case Stance.returning:
+                        if (connector.Status == MyShipConnectorStatus.Connected)
+                        {
+                            CurrentStance = Stance.waiting;
+                        }
+                        if (Power > 0.2)
+                        {
+                            EnemyCheck();
+                        }
+
+                        if (distanceTT < 3)
+                        {
+                            CurrentStance = Stance.docking;
+                            Echo("Docking");
+                            OMW = false;
+                        }
+                        break;
+                    case Stance.working:
+                        EnemyCheck();
+                        if (distanceTT < 50)
+                        {
+                            CurrentStance = Stance.returning;
+                            OMW = false;
+                            Echo("Target not found returning back");
+                        }
+                        break;
+                    case Stance.waiting:
+                        if (distanceTT < 3)
+                        {
+                            CurrentStance = Stance.working;
+                            Go(TargetPos, false);
+                        }
+                        if (connector.Status == MyShipConnectorStatus.Connected)
+                        {
+                            OMW = false;
+                        }
+                        break;
+                }
+            }
+            if (CurrentStance.Equals(Stance.attacking))
+            {
+                remote.SetDockingMode(false);
+                Attack();
+            }
+
+        }
+
+        else if (CurrentWorkType.Equals(WorkType.Patrol))
+        {
+            Echo("OMW" + OMW.ToString());
+            Echo(CurrentStance.ToString());
+            Echo(CurrentWorkType.ToString() + " Mode");
+            Echo("IGC for Patrol ON" + UseIGCforPatrol.ToString());
+            EnergyUpdate();
+
+                if (connector.Status == MyShipConnectorStatus.Connected)
+                {
+                    Charging();
+                }
+                else
+                {
+                    DistanceCal();
+
+                    if (CurrentStance.Equals(Stance.working) | CurrentStance.Equals(Stance.attacking))
+                    {
+                        EnemyCheck();
+                    }
+                    if (OMW && distanceTT < 3)
+                    {
+                        switch (CurrentStance)
+                        {
+                            case Stance.docking:
+                                if (connector.Status == MyShipConnectorStatus.Connectable)
+                                {
+                                    Rearming();
+                                }
+                                break;
+
+                            case Stance.returning:
+                            CurrentStance = Stance.docking;
+                            Echo("Docking");
+                            OMW = false;
+                                break;
+
+                            case Stance.working:
+                            PatrolNum++;
+                            PatrolNum %= PatrolRoute.Count();
+                            Echo("NextPatrolPoint");
+                            DetectCounter = 0;
+                            OMW = false;
+                                break;
+
+                        }
+                    }
+
+                    if (CurrentStance.Equals(Stance.returning) && !OMW)
+                    {
+                        remote.SetDockingMode(true);
+                        remote.SpeedLimit = SpeedLimit;
+                        Go(AboveHome, false);
+                    }
+                    else if (CurrentStance.Equals(Stance.docking) && !OMW)
+                    {
+                        remote.SetDockingMode(true);
+                        remote.SpeedLimit = DockingSpeedLimit;
+                        Go(ConnectorPos, true);
+                    }
+                    else if (CurrentStance.Equals(Stance.attacking))
+                    {
+                        remote.SetDockingMode(false);
+                        Attack();
+                    }
+                    else if (!OMW)
+                    {
+                        remote.SetDockingMode(false);
+                        remote.SpeedLimit = SpeedLimit;
+                        Go(PatrolRoute[PatrolNum], false);
+                    }
+                }
+        }
+    }
+    else
+    {
+        Runtime.UpdateFrequency = UpdateFrequency.Update100;
+        Echo(PatrolRoute.Count.ToString() + " patrol points");
+        Echo("IGC for Patrol ON" + UseIGCforPatrol.ToString());
+        Echo(CurrentWorkType.ToString() + " Mode");
+    }
+
+}
+public void DistanceCal()
+{
+    distanceTT = Math.Sqrt(Math.Pow(remote.GetPosition().X - remote.CurrentWaypoint.Coords.X, 2) + Math.Pow(remote.GetPosition().Y - remote.CurrentWaypoint.Coords.Y, 2) + Math.Pow(remote.GetPosition().Z - remote.CurrentWaypoint.Coords.Z, 2));
+    Echo(distanceTT.ToString());
+}
+public void Charging()
+{
+    Echo("Charging");
+    if (Power > 0.99)
+    {
+        foreach (IMyBatteryBlock battery in batteries)
+        {
+            battery.ChargeMode = ChargeMode.Auto;
+        }
+        connector.Disconnect();
+        CurrentStance = Stance.working;
+        remote.SpeedLimit = SpeedLimit;
+        Go(AboveHome, false);
+    }
+}
+
+public void Attack()
+{
+    Echo("Attacking");
+    remote.SetCollisionAvoidance(true);
+    remote.SetAutoPilotEnabled(true);
+    distance = Math.Sqrt(Math.Pow(remote.GetPosition().X - TargetEntity.Position.X, 2) + Math.Pow(remote.GetPosition().Y - TargetEntity.Position.Y, 2) + Math.Pow(remote.GetPosition().Z - TargetEntity.Position.Z, 2));
+    Vmulti = distance / 300 ;
+
+
+    TargetDir = VRageMath.Vector3D.Subtract(TargetPos, remote.GetPosition());
+    TargetDir = VRageMath.Vector3D.Multiply(TargetDir, Vmulti);
+    AttackPos = VRageMath.Vector3D.Add(remote.GetPosition(), TargetDir);
+    remote.ClearWaypoints();
+    remote.AddWaypoint(AttackPos, "Target");
+    remote.SetAutoPilotEnabled(true);
+    if (distance < 300)
+    {
+        remote.SpeedLimit = (float)Math.Pow(distance/300, 4) * SpeedLimit;
+    }
+    else
+    {
+        remote.SpeedLimit = SpeedLimit;
+    }
+
+
+    CurrentStance = Stance.working;
+    foreach (IMyLargeTurretBase turret in RefTurrets)
+    {
+        if (turret.HasTarget)
+        {
+            CurrentStance = Stance.attacking;
+            RefTurret = turret;
+            TargetEntity = RefTurret.GetTargetedEntity();
+            DetectCounter++;
+            TargetPos = TargetEntity.Position;
+            if (UseIGCforPatrol && DetectCounter < 2)
+            {
+                IGC.SendBroadcastMessage(Channel, TargetPos.ToString(), TransmissionDistance.TransmissionDistanceMax);
+            }
+            break;
+        }
+
+    }
+
+
+}
+
+public void Rearming()
+{
+    connector.Connect();
+    Echo("Rearming");
+    foreach (IMyBatteryBlock battery in batteries)
+    {
+        battery.ChargeMode = ChargeMode.Recharge;
+    }
+
+}
+
+public void Go(Vector3D Destination, bool Docking)
+{
+    remote.SetAutoPilotEnabled(false);
+    remote.ClearWaypoints();
+    remote.AddWaypoint(Destination, "Destination");
+    remote.SetAutoPilotEnabled(true);
+    remote.SetCollisionAvoidance(!Docking);
+    OMW = true;
+    Echo("GoingSMW");
+}
+public void EnergyUpdate()
+{
+    GridTerminalSystem.GetBlocksOfType(batteries, block => block.IsSameConstructAs(Me));
+    Totalpower = 0;
+    Maxpower = 0;
+
+    foreach (IMyBatteryBlock bat in batteries)
+    {
+        Totalpower += bat.CurrentStoredPower;
+        Maxpower += bat.MaxStoredPower;
+    }
+    Power = Totalpower / Maxpower;
+    PowerD = Math.Round((decimal)Power*100,2);
+
+
+    if (Power < 0.05)
+    {
+        if (CurrentStance.Equals(Stance.attacking) | CurrentStance.Equals(Stance.working))
+        {
+            CurrentStance = Stance.returning;
+        }
+        Echo("EnergyCriticalGoingBack" + " " + PowerD.ToString() + "%");
+    }
+    else if (Power < 0.2 && CurrentStance.Equals(Stance.working))
+    {
+        CurrentStance = Stance.returning;
+        Echo("LowEnergyGoingBack" + " " + PowerD.ToString() + "%");
+
+    }
+    else
+    {
+        Echo("Batteries checked" + " " + PowerD.ToString() + "%");
+    }
+}
+public void EnemyCheck()
+{
+    GridTerminalSystem.GetBlocksOfType(RefTurrets, block => block.IsSameConstructAs(Me));
+    foreach (IMyLargeTurretBase turret in RefTurrets)
+    {
+        if (turret.HasTarget)
+        {
+            TargetEntity = turret.GetTargetedEntity();
+            TargetPos = TargetEntity.Position;
+            Echo("Enemy found");
+            OMW = false;
+            CurrentStance = Stance.attacking;
+            Attack();
+            break;
+        }
+    }
+}

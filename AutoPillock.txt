@@ -1,0 +1,779 @@
+
+string Ver = "0.9.101";
+
+// (c)AutoPillock by cheerkin
+// https://steamcommunity.com/sharedfiles/filedetails/?id=2900108843
+
+static bool DesignMode;
+static bool LogDefinedBlocks;
+
+static Vector3D GRID_ANGULAR_ACCELERATIONS = new Vector3D(0.5f, 0.5f, 1.02f);
+
+static double Dt = 1 / 60f;
+static long DbgIgc = 0;
+static float MAX_SP = 104.38f;
+const float G = 9.81f;
+
+static float StoppingPowerQuotient = 0.5f; // 0.9
+static bool SmoothPointBlankAcceleration = true;
+static float DampeningCutoffSquared = 16f;
+static float DampeningCutoffFactor = 0.1f;
+
+static string GGEN_GR_TAG = "";
+static int LOGGER_MAX_CHARS = 5000;
+
+static float PMW_FF_REACTION_R = 2500;
+
+static bool IsLargeGrid;
+
+public class Variables
+{
+	Dictionary<string, ISettable> v = new Dictionary<string, ISettable> {
+		{ "wb-range-override", new Variable<float> { value = 0, parser = s => float.Parse(s) } },
+		{ "wb-precision-override", new Variable<float> { value = 0, parser = s => float.Parse(s) } },
+		{ "hold-thrust-on-rotation", new Variable<bool> { value = false, parser = s => s == "true" } },
+		{ "torpedo-fuse-offset", new Variable<float> { value = -0.5f, parser = s => float.Parse(s) } },
+		{ "roll-power-factor", new Variable<float> { value = 0.1f, parser = s => float.Parse(s) } },
+		{ "sp-limit", new Variable<float> { value = 104.38f, parser = s => { var r = float.Parse(s); MAX_SP = r; return r; } } },
+		{ "move-through", new Variable<bool> { value = false, parser = s => s == "true" } },
+		{ "dpath-speed-limit", new Variable<float> { value = 30, parser = s => float.Parse(s) } },
+		{ "capital-behavior", new Variable<bool> { value = false, parser = s => s == "true" } },
+		{ "ripple-increment-interval", new Variable<int> { value = 20, parser = s => int.Parse(s) } }, // 180 for rails?
+		{ "filtering-size", new Variable<float> { value = 6f, parser = s => float.Parse(s) } },
+		{ "awareness-range", new Variable<float> { value = 2000f, parser = s => float.Parse(s) } },
+		{ "tg-autolink-range", new Variable<float> { value = 500f, parser = s => float.Parse(s) } },
+		{ "wb-model-cycle-timeout", new Variable<int> { value = 60, parser = s => int.Parse(s) } }
+	};
+	public void Set(string key, string value) { v[key].Set(value); }
+	public void Set<T>(string key, T value) { (v[key] as Variable<T>).value = value; }
+	public T Get<T>(string key) { return (v[key] as Variable<T>).value; }
+	public interface ISettable
+	{
+		void Set(string v);
+	}
+	public class Variable<T> : ISettable
+	{
+		public T value;
+		public Func<string, T> parser;
+		public void Set(string v) { value = parser(v); }
+	}
+}
+
+public enum Awareness { None, TurretAi, TGP, Global, Full }
+public enum ResponseKind { Ignore, FreeFire, Attack, Kite, Flee }
+public enum ResponseState { None, FreeFiring, Attacking }
+public enum PState { Disabled = 0, Inert, WP }
+public enum ThrustDelegation { None = 0, Vtol, Rover, Clang }
+class ң{Dictionary<string,bool>Ң=new Dictionary<string,bool>{{"suppress-transition-control",false},{
+"wingman-circle-rotation",false},{"damp-when-idle",true},{"vtol-hybrid",true},{"ignore-user-thruster",false},{"emit",true},{"coax-ripple",true},{
+"suppress-gyro-control",false},{"aim-to-center",false},{"avoid-carrier",true},{"freefall-target-filter",false},{"wb-snipe-range",false},{
+"wb-jab",false}};public void ҡ(string Ț,bool Ҡ){Ң[Ț]=Ҡ;}public void ҟ(string Ț){Ң[Ț]=!Ң[Ț];}public bool Ҟ(string Ț){return Ң[Ț];
+}public ImmutableArray<MyTuple<string,string>>ҝ(string Ҝ){return Ң.Select(Ě=>new MyTuple<string,string>(
+$"{Ě.Key}: {(Ě.Value?"on":"off")}",$"[toggle:{Ě.Key}],[{Ҝ}]")).ToImmutableArray();}public void қ(string Ț,Ӡ B){switch(Ț){case"suppress-transition-control"
+:if(!Ҟ("suppress-transition-control")){B.Ժ().ȝ();}break;case"vtol":B.Ժ().Ȃ(0);break;}}}Program(){Runtime.UpdateFrequency=
+UpdateFrequency.Update100;ú=GridTerminalSystem;W=new V(IGC,new Dictionary<string,Action<string[],Ӡ>>{{"set-output",(ƶ,B)=>{
+IMyTextSurface ΐ;var Ő=B.ӷ.ɻ.FirstOrDefault(Ê=>Ê.CustomName.Contains(ƶ[2])&&(Ê is IMyTextSurfaceProvider))as IMyTextSurfaceProvider;ΐ=
+Ő?.GetSurface(int.Parse(ƶ[3]));if(ΐ==null){List<IMyTextPanel>Қ=new List<IMyTextPanel>();GridTerminalSystem.
+GetBlocksOfType(Қ,Ê=>Ê.IsSameConstructAs(Me)&&Ê.CustomName.Contains(ƶ[2]));ΐ=Қ.FirstOrDefault();}if(ΐ!=null){ɲ.շ=(Å)=>ΐ.WriteText(Å+
+"\n",true);ɲ.ɣ=()=>ΐ.WriteText("");ΐ.ContentType=ContentType.TEXT_AND_IMAGE;}}},{"next",(ƶ,B)=>B.Ơ.щ()},{"create-task",(ƶ,B)
+=>ԏ(ƶ,B)},{"inject-task",(ƶ,B)=>ԏ(ƶ,B,true)},{"remove-task",(ƶ,B)=>B.Ơ.у(int.Parse(ƶ[2]))},{"infer-task",(ƶ,B)=>ԍ(ƶ)},{
+"default-task",(ƶ,B)=>{ӡ.Ơ.ҫ(()=>ӛ(ƶ,ӡ));ʄ.ʔ=string.Join(":",ƶ.Skip(2));}},{"remove-default-task",(ƶ,B)=>{ӡ.Ơ.ҫ(null);ʄ.ʔ=null;}},{
+"signal",(ƶ,B)=>B.Ơ.ф()},{"repeat",(ƶ,B)=>{var Ã=new List<string>(ԑ);ԑ.Clear();ԓ(Ã,true);}},{"save-queue",(ƶ,B)=>ʄ.ʕ=ԑ},{
+"exec-queue",(ƶ,B)=>ԓ(ʄ.ʕ,true)},{"jab",(ƶ,B)=>B.Ơ.ю(new օ(ӡ,null,null,null))},{"jab2",(ƶ,B)=>B.Ơ.ю(new օ(ӡ,null,null,ӡ.Ԝ.
+FirstOrDefault()))},{"orbit-here",(ƶ,B)=>ӓ(ƶ,B)},{"thrust-delegation",(ƶ,B)=>B.Ɯ.Ġ(ƶ[2])},{"recycle",(ƶ,B)=>ù()},{"set-value",(ƶ,B)=>B
+.Ӟ.Set(ƶ[2],ƶ[3])},{"set-tag",(ƶ,B)=>B.Ԡ=ƶ[2]},{"clear-state",(ƶ,B)=>{ʄ=new ʌ(Å=>Storage=Å);Save();}},{"clear-defs",(ƶ,B)
+=>û()},{"clear-navs",(ƶ,B)=>ŀ?.ī()},{"request-docking",(ƶ,B)=>B.Ơ.ь()},{"request-depart",(ƶ,B)=>{var Ȏ=B.Ք.WorldMatrix;var
+Ì=new ѹ(Ȏ.Translation-Ȏ.Forward*100,ӡ,10,false);B.Ơ.ѐ(Ì);}},{"cancel-current-route",(ƶ,B)=>ŀ?.ō()},{"start-su",(ƶ,B)=>{
+var Q=ƶ[2];var ӑ=ƶ.Length>3?long.Parse(ƶ[3]):(long?)null;if(Q=="first"){var Ӑ=B.Ԧ.Where(Ê=>!Ê.ӟ).FirstOrDefault();if(Ӑ!=
+null)B.Է(Ӑ,ӑ);}else{foreach(var Ó in B.Ԧ.Where(Ê=>!Ê.ӟ&&((Q=="all")||(Ê.Ԡ==Q))))B.Է(Ó,ӑ);}}},{"refresh-su",(ƶ,B)=>B.ӝ.
+ForEach(Ê=>B.ի(Ê))},{"tmc",(ƶ,B)=>B.Ջ?.TryRun("q:"+string.Join(":",ƶ.Skip(2)))},{"timer",(ƶ,B)=>B.Տ.ª(ƶ[2])},{"d-path-add",(ƶ,B
+)=>{if(ǿ.ǽ!=0){B.Ǣ.Õ($"apck.dpath.add:{ƶ[2]}",ӡ.Ք.WorldMatrix,ǿ.ǽ);}}},{"d-path-clear",(ƶ,B)=>{if(ǿ.ǽ!=0)IGC.
+SendUnicastMessage(ǿ.ǽ,"apck.command","command:clear-navs");}},{"pick-target",(ƶ,B)=>{if(ӡ.Ơ.я()is װ)ӡ.Ơ.щ();else ӡ.Ơ.ъ(new װ(Ԁ,ӡ));}},{
+"raycast-pt",(ƶ,B)=>ӡ.Ơ.ѕ()},{"range-pt",(ƶ,B)=>ӡ.Ơ.і()},{"rangefind",(ƶ,B)=>ӡ.Ơ.ї()},{"override-task-behavior",(ƶ,B)=>B.Ơ.ҥ(ƶ[2],ƶ[
+3],ƶ[4])},{"set-awareness",(ƶ,B)=>B.Ơ.Ш(ƶ[2])},{"set-response",(ƶ,B)=>B.Ơ.Ц(ƶ[2])},{"set-response-ovr",(ƶ,B)=>B.Ơ.Щ=
+string.Join(":",ƶ.Skip(2))},{"w-mod-value",(ƶ,B)=>ǿ.ș(ƶ[2],ƶ[3])},{"wb-cycle-face",(ƶ,B)=>B.Ɵ.Ŷ()},{"wb-condition",(ƶ,B)=>B.Ɵ.
+ǘ(ƶ)},{"read-gps-from",(ƶ,B)=>{var Y=GridTerminalSystem.GetBlockWithName(ƶ[2]);if(Y!=null){Vector3D Ñ=Vector3D.Zero;if(Ѓ(
+Y.CustomData,ref Ñ))B.Ơ.Ҳ=Ñ;}}},{"get-toggles",(ƶ,B)=>{var Ҝ=string.Join(":",ƶ.Take(3));IGC.SendUnicastMessage(long.Parse
+(ƶ[2]),$"menucommand.get-commands.reply:{Ҝ}",B.Ú.ҝ(Ҝ));}}});}void ӓ(string[]ƶ,Ӡ B){if(ƶ.Length>3){var C=
+"command:create-task:attack:Name=static attack".Split(':').Concat(ƶ.Skip(2).Take(3)).ToArray();ԏ(C,B);}else{var Ӓ=float.Parse(ƶ[2]);var X=B.ə+B.Ɯ.ͼ.WorldMatrix.Forward
+*Ӓ;var Ѥ=new ѹ(X,ӡ,100,true);Ѥ.ư="Orbit";Ѥ.ҏ.Ӯ=(Ê,ŋ,Y)=>Ф.ѽ(X,Ӓ,new Vector3D(0,1,0),ŋ.ə);B.Ơ.ѐ(Ѥ);}}class Ҭ{Ӡ ľ;Func<ҕ>ҭ;
+ҕ Ү;bool ү=true;public long?ұ;public long?Ҷ;public Vector3D?Ҳ;public string ҳ;double Ҵ;public Ҭ(Ӡ ҵ){ľ=ҵ;if(ҵ.ԣ!=null)ү=
+false;ӊ();Ю=new ק("tgp.global.gridsense.update",true,ľ.ը,Ã=>љ.HasValue&&(Ã.ˌ==љ));Ю.Ԅ=(Ì,Ǔ)=>ј(Ǔ);Э=new ק(
+"tgp.local.gridsense.update",false,ľ.ը,Ê=>Ê.ư=="tdesignator");Э.Ԅ=(Ì,Ǔ)=>ј(Ǔ);ҵ.Ց.ɝ+=(Ǔ)=>{if(ҵ.ԣ==null)ľ.է.SendBroadcastMessage(
+"tgp.global.gridsense.update",ľ.Ց.ɞ.Ѐ(),TransmissionDistance.AntennaRelay);ј(Ǔ);};}public void ҫ(Func<ҕ>Ã){ҭ=Ã;if(Ã!=null){Ү=ҭ();ѐ(Ү);}}int Ҫ;void ҩ(
+ҕ Ã){Ҫ++;Ã.ѫ(Ҫ);if(Ҧ.ContainsKey(Ã.ũ)){ɲ.ɧ($"Bh override: {Ã.ũ}");foreach(var Ҩ in Ҧ[Ã.ũ]){var Y=Ҩ.Split(':');if(Y[0]==
+"aim")Ã.ҏ.ӵ=ҧ[Y[1]];else if(Y[0]=="move")Ã.ҏ.Ӯ=ҧ[Y[1]];else if(Y[0]=="up")Ã.ҏ.ӯ=ҧ[Y[1]];}}}Dictionary<string,Func<Vector3D,Ӡ,
+ӭ,Vector3D>>ҧ;Dictionary<string,List<string>>Ҧ=new Dictionary<string,List<string>>();public void ҥ(string Ҥ,string Ұ,
+string ҷ){if(!Ҧ.ContainsKey(Ҥ))Ҧ.Add(Ҥ,new List<string>());Ҧ[Ҥ].Add(Ұ+":"+ҷ);}void ӊ(){ҧ=new Dictionary<string,Func<Vector3D,Ӡ
+,ӭ,Vector3D>>();ҧ.Add("AimRestrictPlane",Ф.Ѿ);ҧ.Add("BallisticSolver",Ф.е);}public int ӄ=>Ӆ.Count;LinkedList<ҕ>Ӆ=new
+LinkedList<ҕ>();LinkedListNode<ҕ>ӆ;List<MyTuple<int,string,Vector3D>>Ӈ=new List<MyTuple<int,string,Vector3D>>(10);int ӈ;public
+void Ӊ(int Ŭ){ɲ.շ?.Invoke($"Cap.TargetId: {ұ}");ɲ.շ?.Invoke($"Cap.TargetInfo: {ҳ}");ɲ.շ?.Invoke($"Cap.StaticPos: {Ҳ:f2}");ɲ.
+շ?.Invoke($"Cap.Rangefinder: {Ҵ:f2}");ɲ.շ?.Invoke($"Subordinates: {ľ.ǿ.ǻ.Count:f2}");var Ӌ=ľ.Ɯ;if(ľ.ԣ==null){var ӏ=
+"        ";var Ͻ=new MyTuple<string,byte,int,long>(ľ.Ԡ,(byte)ľ.Ԣ,ľ.ԡ,ľ.ե.CubeGrid.EntityId);var ӌ=new MyTuple<MyTuple<string,byte,
+int,long>,Vector3D,Vector3D,Vector3D,string>(Ͻ,Ӌ.ͼ.GetPosition(),Ӌ.ˎ,Ӌ.Ͷ,
+$"{ӏ}V': {Ӌ.Κ.Length():f1}\n{ӏ}{я()?.ư}({Ӆ.Count})");ľ.է.SendBroadcastMessage("apck.report",ӌ);}if(ľ.Ú.Ҟ("emit")){ľ.է.SendBroadcastMessage("apck-position",new MyTuple<
+MatrixD,Vector3D>(ľ.ե.WorldMatrix,ľ.Ɯ.ˎ));}if(ү){Ӈ.Clear();if(Ӆ.Count>0){Ӈ.Add(new MyTuple<int,string,Vector3D>(-1,"agent",Ӌ.ͼ.
+GetPosition()));ɲ.ɫ("Task queue:");var Ӎ=Ӌ.ͼ.GetPosition();foreach(var Ã in Ӆ){ɲ.ɫ($"{Ã.ũ}-{Ã.Ҕ}");if(Ã.ə.HasValue)Ӎ=Ã.ə.Value;Ӈ.
+Add(new MyTuple<int,string,Vector3D>(Ã.Ҕ,Ã.ũ,Ã.ə??Ӎ));}ľ.է.SendBroadcastMessage("captain-commander.task-data",Ӈ.
+ToImmutableArray());}}ӈ=Ŭ;if(ӆ==null||ӆ.Value.ғ)ѥ();if(Ъ==ResponseState.FreeFiring)ľ.Ɵ.ǔ(њ);if(ӆ!=null){var Ã=ӆ.Value;if(Ã.ѯ(Ŭ,ľ.Ɯ)){ɲ.ɧ
+($"TFin {Ã.ũ}-{Ã.Ҕ}");щ();}}ӎ(ц());}void ӎ(ӭ Y){var Ϋ=Y.Ӵ?.Invoke()??ľ.ə;var Ӄ=Y.Ӧ;var ӂ=Y.ӵ;var Ӂ=Y.ӳ;if(Ъ==
+ResponseState.FreeFiring){Y.Ӧ=њ;Y.ӵ=ќ;}if(Y.ӥ?.ˍ.HasValue==true){var Ӏ=Y.ӥ.ˍ.Value;if((Y.ӱ!=null)&&(Y.ӥ.ˎ?.LengthSquared()>0)){
+Vector3D ҿ=И.λ(Ϋ,ľ.Ɯ.ˎ,Ӏ,Y.ӥ.ˎ.Value,Y.ӱ(),false);if((Ӏ-ҿ).LengthSquared()<2500*2500)Ӏ=ҿ;}ľ.Ɯ.ͻ=Ӏ;if(Y.Ӯ!=null)ľ.Ɯ.Ͷ=Y.Ӯ(Ӏ,ľ,Y);
+else ľ.Ɯ.Ͷ=Ӏ;if(Ъ==ResponseState.FreeFiring)ľ.Ɯ.Ͷ=ћ(ľ.Ɯ.Ͷ,ľ,Y);Y.Ӥ=ľ.Ɯ.Ͷ;double Ҿ=(ľ.Ɯ.Ͷ-Ϋ).Length();if(Y.Ө){if(ľ.Ɖ()&&(Ҿ>(
+MAX_SP>200?8000:3000))){if(һ(Ϋ,Y)){if(!Ҽ.HasValue){Ҽ=Y.Ӫ;ɲ.ɧ("Circumnav starts");}Y.Ӫ=false;}else{if(Ҽ.HasValue){Y.Ӫ=Ҽ.Value;ɲ
+.ɧ("Circumnav ends");}Ҽ=null;}}else{if(Ҽ.HasValue){Y.Ӫ=Ҽ.Value;ɲ.ɧ("Circumnav ends");}Ҽ=null;}}if(Y.ӧ)Y.Ӥ=Ф.ҙ(Y.Ӥ.Value,ľ
+,Y);}else if(Y.ө)Y.Ӥ=Y.Ӯ?.Invoke(Vector3D.Zero,ľ,Y);if(Y.Ӧ?.ˍ.HasValue==true){var ҽ=Y.Ӧ.ˍ.Value;if(Y.ӵ!=null)ҽ=Y.ӵ(ҽ,ľ,Y)
+;Y.ͷ=ҽ;}else if(Y.ө)Y.ͷ=Y.ӵ?.Invoke(Vector3D.Zero,ľ,Y);Y.ӣ=Y.ӯ?.Invoke(Vector3D.Zero,ľ,Y)??Vector3D.Zero;Y.Ӣ=Y.ӳ?.Invoke(
+);if(Ъ==ResponseState.FreeFiring){Y.Ӧ=Ӄ;Y.ӵ=ӂ;Y.ӳ=Ӂ;}}bool?Ҽ;bool һ(Vector3D Ϋ,ӭ Y){var Һ=ľ.Ɗ.Value;var ҹ=Һ-Ϋ;if(Vector3D
+.Dot(Vector3D.Normalize(ҹ),Vector3D.Normalize(ľ.Ɯ.Η.Value))>0.99){var Ê=ľ.Ɯ.Ͷ;var Ҹ=Ê-Һ;var τ=ҹ.Length();var ʴ=Vector3D.
+Dot(Vector3D.Normalize(Һ-Ê),Vector3D.Normalize(Vector3D.Normalize(Ê-Ϋ)));ɲ.ɫ($"CheckCircumnavigate.alt: {τ}");ɲ.ɫ(
+$"CheckCircumnavigate.d: {(Ê-Ϋ).Length()}");ɲ.ɫ($"CheckCircumnavigate.dot: {ʴ}");if(ʴ<0.6){var ω=new BoundingSphereD(Һ,τ);if(ω.Contains(Ê)==ContainmentType.
+Contains){var Ǵ=Ф.җ(Ê,ľ,Y);ɲ.ɫ("Circumnavigate above");Y.Ӥ=Ǵ;return true;}else{ω.Radius-=100;var ώ=new RayD(Ϋ,Vector3D.Normalize
+(Ê-Ϋ));var Њ=ω.Intersects(ώ);if(Њ.HasValue){ɲ.ɫ("Outer");var Љ=Vector3D.Cross(-ώ.Direction,Ҹ);var Ј=Vector3D.Cross(Ҹ,Љ);
+var ŋ=Ҹ.Length();var Ї=τ*τ/ŋ;var І=Math.Asin(τ/ŋ);var Ѕ=Math.Cos(І)*τ;var э=Һ+Ї*Vector3D.Normalize(Ҹ)+Ѕ*Vector3D.Normalize(
+Ј);var Ǵ=Ф.җ(э,ľ,Y);ɲ.ɫ($"Circumnavigate tangent");Y.Ӥ=Ǵ;return true;}}}}return false;}public void ю(ҕ Ã){ɲ.ɧ("CreateWP "
++Ã.ư);ъ(Ã);}public ҕ я(){return ӆ?.Value;}public void ѐ(ҕ Ã){ҩ(Ã);Ӆ.AddLast(Ã);ɲ.ɧ($"Added {Ã.ư}, total: {Ӆ.Count}");if(ӆ
+==null){ӆ=Ӆ.First;ш(Ã);}else if(ӆ.Value.Ғ&&!ӆ.Value.Ґ.HasValue)щ();}public void ъ(ҕ Ã){ҩ(Ã);Ӆ.AddFirst(Ã);ɲ.ɧ(
+$"Added and activated {Ã.ư}, total: {Ӆ.Count}");ӆ=Ӆ.First;ш(Ã);}public void щ(){if(ӆ==null)return;var ƛ=ӆ;var X=ƛ.Value;X.Ҏ?.Invoke();ľ.Տ.ª(X.ũ+".OnComplete");if(ƛ.
+Next!=null){if(ƛ==ӆ){X=ƛ.Next.Value;ӆ=ƛ.Next;ш(X);}Ӆ.Remove(ƛ);}else{Ӆ.Clear();ӆ=null;if((Ү!=null)&&(X!=Ү)){Ү=ҭ();ѐ(Ү);}}}
+void ш(ҕ Ã){Ã.ѱ(ľ,ӈ);}ӭ ч=new ӭ{ư="Standby"};public ӭ ц(){var х=ӆ?.Value;if(х!=null)return х.ҏ;else return ч;}public void ф(
+){var Ã=я();if(Ã as ѩ!=null)щ();}public void у(int J){var т=Ӆ.FirstOrDefault(Ê=>Ê.Ҕ==J);if(т!=null){if(я()==т)щ();else Ӆ.
+Remove(т);}}public void ь(){if(ľ.Ք!=null&&ľ.ǿ.ǽ!=0)ѐ(new ئ(ľ,ľ.ǿ.ǽ,ľ.ը.ԕ("docking")));}public void ё(long Ѣ){ѝ=false;ľ.է.
+SendUnicastMessage(Ѣ,"apck.dpath.complete","");}bool ѝ;public void ў(ˊ џ=null){if(ľ.Ք?.Status==MyShipConnectorStatus.Connected){ľ.ա.
+ForEach(Y=>Y.ChargeMode=ChargeMode.Auto);ľ.բ.ForEach(Y=>Y.Stockpile=false);ľ.Ɯ.Ģ(PState.WP);var Ѡ=ľ.Ք.OtherConnector;var ѡ=new
+ѩ(ľ,60);ѡ.Ҏ=()=>{ɲ.ɧ("OtherConnector undick wait complete");var Л=џ?.ˍ??ľ.Ք.GetPosition()-ľ.Ք.WorldMatrix.Forward*100;if(
+Ѡ.CustomName.Contains("dock-host")){if(ѝ==false){Ѡ.CustomData=ľ.է.Me.ToString();ѝ=true;ľ.է.SendBroadcastMessage(
+"apck.depart.request",new MyTuple<long,Vector3D>(Ѡ.EntityId,Л));ɲ.ɧ($"Waiting for depart dpath");ľ.Ɯ.Ģ(PState.Inert);ľ.Ơ.ъ(new ѩ(ľ,()=>ѝ==
+false));}}else{ɲ.ɧ($"Undock");ľ.Ք.Disconnect();}};ľ.Ơ.ъ(ѡ);}}void ѥ(){if(њ?.ˆ()==true){if(Ы==ResponseKind.FreeFire){if(Ъ==
+ResponseState.None){ɲ.ɧ("FreeFiring Start");Ъ=ResponseState.FreeFiring;ќ=Ф.е;ћ=Ф.Ҁ;}}else if(Ы==ResponseKind.Attack){if(Ъ==
+ResponseState.None){Ъ=ResponseState.Attacking;ɲ.ɧ("OnTurretTgStart");if(Щ!=null){ľ.Ǣ.D(Щ.Replace("{id}",њ.ˌ.ToString()),ľ);}else{var
+х=new յ(ľ,њ);if(!Ӆ.Any()){var ѣ=ľ.ə;х.Ҏ=()=>{var Т=ľ.Ɖ()?ѣ-ľ.Ɗ.Value:new Vector3D(1,0,0);Т/=Т.Length();var Ѥ=new ѹ(ѣ,ľ,10
+,true);Ѥ.Ґ=60*40;Ѥ.ư="Search";Ѥ.ҏ.Ӯ=(Ê,ŋ,Y)=>Ф.ѽ(Ê,500,Т*400,ŋ.ə);ѐ(new ѹ(ѣ+Т*200,ľ,10,false));ѐ(Ѥ);};}ъ(х);}}}}else{if(Ъ
+==ResponseState.Attacking){Ъ=ResponseState.None;ɲ.ɧ("OnTurretTgEnd");}else if(Ъ==ResponseState.FreeFiring){Ъ=ResponseState
+.None;ќ=null;ћ=null;њ=null;љ=null;ɲ.ɧ("FreeFiring End");ľ.Ɵ.Ƃ();}}}Func<Vector3D,Ӡ,ӭ,Vector3D>ќ;Func<Vector3D,Ӡ,ӭ,
+Vector3D>ћ;ˊ њ;long?љ;void ј(ˊ Ǔ){ɲ.ɫ($"consider tg: {(Ǔ.ˍ.Value-ľ.ə).Length():f2}");if((њ==null)||!њ.ˆ()){var Ű=(Ǔ.ˍ.Value-ľ.ə)
+.Length();if(((Ы==ResponseKind.Attack)&&(Ű<ľ.Ӟ.Get<float>("awareness-range")))||((Ы==ResponseKind.FreeFire)&&(Ű<ľ.Ɵ.ś))){
+њ=Ǔ;љ=Ǔ.ˌ;}}}public void ї(){var Ű=є();if(Ű.HasValue)Ҵ=(ľ.ə-Ű.Value).Length();}public void і(){if(Ҵ>0)Ҳ=ľ.Ɯ.ʛ(Ҵ);}public
+void ѕ(){Ҳ=є();}Vector3D?є(){var ѓ=(IMyEntity)ľ.գ.FirstOrDefault(Ê=>Ê.IsActive)??ľ.ӷ.ɻ.FirstOrDefault(Ê=>Ê.IsUnderControl);
+if(ѓ!=null){var Ñ=ѓ.GetPosition()+ѓ.WorldMatrix.Forward*5000;var ђ=ľ.գ.FirstOrDefault(X=>X.CanScan(Ñ));if(ђ!=null){var Ű=ђ
+.Raycast(Ñ);if(Ű.HitPosition.HasValue&&Ű.EntityId!=ђ.CubeGrid.EntityId){return Ű.HitPosition;}}}return null;}public void
+л(long J,string[]ƶ){var Ã=string.Join(":",ƶ.Skip(2));if(Ҳ.HasValue)Ã+=$":{Џ(Ҳ.Value)}";ľ.է.SendUnicastMessage(J,
+"apck.command",$"command:create-task:{Ã}");}ק Ю;ק Э;public Awareness Ь=Awareness.None;public ResponseKind Ы=ResponseKind.FreeFire;
+public ResponseState Ъ=ResponseState.None;public string Щ=null;public void Ш(string Х){Awareness Ч;if(Enum.TryParse(Х,out Ч)&&
+(Ч!=Ь)){Ю.ԁ();Э.ԁ();ľ.Ց.ɡ=false;if((Ч==Awareness.TGP)||(Ч==Awareness.Full))Э.ѫ();if((Ч==Awareness.TurretAi)||(Ч==
+Awareness.Full))ľ.Ց.ɡ=true;if((Ч==Awareness.Global)||(Ч==Awareness.Full))Ю.ѫ();Ь=Ч;}}public void Ц(string Х){Enum.TryParse(Х,out
+Ы);}public void Ɣ(){ɲ.ɧ("~Cap Finalizer");Ю.ԁ();Э.ԁ();}}class Ф{public static Vector3D У(Vector3D Ê,Ӡ B,ӭ Y,float Ű){var
+Т=Vector3D.Normalize(B.Ɯ.Η??new Vector3D(1,0,0));var С=B.ə-Ê;С=Vector3D.Normalize(С);var Р=Vector3D.Cross(С,Т);if(Р==
+Vector3D.Zero)Р=new Vector3D(1,0,0);var П=С*Ű+Р*Ű;var О=П*0.707;var Ñ=B.ə+Vector3D.Normalize(Ê+О-B.ə);return B.ə+Vector3D.
+Normalize(Н(Ñ,B,Y)-B.ə);}public static Vector3D Н(Vector3D Ê,Ӡ B,ӭ Y){if(B.Ɖ()){var М=400d;var Ì=B.Ր.CalculateShipMass().
+PhysicalMass;if(Ì>0){var и=B.Ɯ.Ό.HalfExtents.Length()/Ì-B.Ɯ.Η.Value.Length();if(и>0)М=MAX_SP*MAX_SP/(2*и*.7f);}double φ;B.Ɯ.Ί.
+TryGetPlanetElevation(MyPlanetElevation.Surface,out φ);var Ű=Ê-B.Ɗ.Value;var τ=B.ə-B.Ɗ.Value;var й=τ.Length()-Ű.Length();ɲ.ɫ($"loss: {й:f2}")
+;ɲ.ɫ($"elev: {φ:f2}");ɲ.ɫ(й.ToString("f2"));if(φ-й<М)return Ê+Vector3D.Normalize(Ű)*(й-φ+М);}return Ê;}public static
+Vector3D к(Vector3D Ê,Ӡ B,ӭ Y,bool м,float н){var Ã=Y.ӥ;Vector3D Ě=new Vector3D(0,0,1);if(B.Ɖ()){Ě=Vector3D.Normalize(B.Ɯ.Η.
+Value);}else if(Ã.ˎ?.Length()>20)Ě=Vector3D.Normalize(Ã.ˎ.Value);var о=Vector3D.Normalize(Vector3D.
+CalculatePerpendicularVector(Ě));var п=Vector3D.Normalize(Vector3D.Cross(Ě,о));double р=550/н;var з=Ê+о*Math.Cos(Math.PI*(Ô/60f/40f*р))*н+п*Math.Sin
+(Math.PI*(Ô/60f/40f*р))*н;var ж=Ě*100*Math.Cos(Math.PI*(Ô/60f/2f))+о*100*Math.Sin(Math.PI*(Ô/60f/2f));var Ǵ=(м?И.σ(B.ə,з,
+new BoundingSphereD(Ã.ˍ.Value,н-50)):з)+ж;Ǵ=Н(Ǵ,B,Y);return Ǵ;}public static Vector3D е(Vector3D Ê,Ӡ B,ӭ Y){var д=B.Ɯ.ˎ;var
+г=B.ə;var Ǔ=Y.Ӧ;var в=Ǔ.ˍ.Value;var б=Ǔ.ˎ??Vector3D.Zero;в+=б*Dt*2;B.Ɵ.Ŵ(в);var ſ=B.Ɵ.ǹ(в,б,д,B.Ɯ.Η??Vector3D.Zero);var а
+=B.Ɵ.Ǹ();if(а.Direction!=Vector3D.Zero){MatrixD Я;var ϗ=B.Ɯ.ͼ.WorldMatrix.Up;if(Vector3D.ArePerpendicular(ref а.Direction
+,ref ϗ))Я=MatrixD.CreateFromDir(а.Direction,B.Ɯ.ͼ.WorldMatrix.Up);else Я=MatrixD.CreateFromDir(а.Direction,B.Ɯ.ͼ.
+WorldMatrix.Forward);Я.Translation=а.Position;Y.ӳ=()=>Я;}else Y.ӳ=null;if(B.ǿ.Ǽ.ɞ.ˆ()){var с=new RayD(г,Vector3D.Normalize(ſ-г));
+var Ϭ=B.ǿ.Ǽ.ɞ.ˑ.Value;var ω=new BoundingSphereD(Ϭ.Min,Ϭ.Max.X);if(!с.Intersects(ω).HasValue)B.Ɵ.Ć(ſ);}else B.Ɵ.Ć(ſ);return
+ſ;}public static Vector3D Ѿ(Vector3D Ê,Ӡ B,ӭ Y){if(!B.Ɖ())return Ê;var ς=B.ə;var ѻ=Vector3D.Normalize(B.Ɯ.Η.Value);var ѿ=
+Ê-ς;var П=Vector3D.ProjectOnPlane(ref ѿ,ref ѻ);var Ò=B.Ɯ.ͼ.WorldMatrix.Forward;var ʴ=Vector3D.Dot(Vector3D.Normalize(ѿ),Ò
+);if(ʴ<0)П=Vector3D.ProjectOnPlane(ref П,ref Ò);return ς+П;}public static Vector3D ҁ(Vector3D Ñ,Ӡ B,ӭ Y){if(B.Ɖ())return-
+B.Ɯ.Η.Value;else return Vector3D.Zero;}public static Vector3D Ҋ(Vector3D Ñ,Ӡ B,ӭ Y){if(B.Ɖ()){if(B.Ɯ.ˎ.LengthSquared()>0)
+{var ˏ=Vector3D.Reject(B.Ɯ.ˎ,B.Ɯ.ͺ-B.ə)/5f;return-Vector3D.Normalize(B.Ɯ.Η.Value+ˏ);}return-B.Ɯ.Η.Value;}else return
+Vector3D.Zero;}public static Vector3D ѽ(Vector3D ų,double Ű,Vector3D Т,Vector3D α){var X=ų+Т;var С=α-X;С=Vector3D.Normalize(С);Ű
+=(Vector3D.Normalize(α-ų)*Ű-Т).Length();Т=Vector3D.Normalize(Т);var Р=Vector3D.Cross(С,Т);X+=С*Ű+Р*100;var ʴ=Vector3D.Dot
+(Т,С);if((ʴ>0.7)||(ʴ<-0.4))X+=Vector3D.ProjectOnPlane(ref С,ref Т)*50;return X;}public static Vector3D Ѽ(Vector3D ų,
+Vector3D Т,double ʜ){return ų+Т*Math.Sin(ʜ/2);}public static Vector3D Ҁ(Vector3D Ê,Ӡ B,ӭ Y){var ς=B.ə;var Ö=(Ê-ς).Length();if(Ö>
+50){var ϗ=Vector3D.CalculatePerpendicularVector(Ê-ς);var Җ=Vector3D.Cross(ϗ,Ê-ς);return Ê+Vector3D.Normalize(ς-Ê)*(Ö-100)+
+Vector3D.Normalize(Җ)*30*Math.Cos(Math.PI*(Ô/60f/2f))+Vector3D.Normalize(ϗ)*30*Math.Sin(Math.PI*(Ô/60f/2f));}return Ê;}public
+static Vector3D җ(Vector3D Ê,Ӡ B,ӭ Y){var Ҙ=Vector3D.Normalize(B.Ɯ.Η.Value);var Ǔ=Ê-B.ə;var υ=Vector3D.ProjectOnPlane(ref Ǔ,
+ref Ҙ);ɲ.ɫ($"bearing: {υ.Length()}");double φ;B.Ր.TryGetPlanetElevation(MyPlanetElevation.Sealevel,out φ);if(φ<2000)return
+B.ə-Ҙ*1000+Vector3D.Normalize(υ)*500;return B.ə+υ;}public static Vector3D ҙ(Vector3D Ê,Ӡ B,ӭ Y){if(B.ǿ.Ǽ.ɞ.ˆ()&&B.Ú.Ҟ(
+"avoid-carrier")){var Ϭ=B.ǿ.Ǽ.ɞ.ˑ.Value;var ω=new BoundingSphereD(Ϭ.Min,Ϭ.Max.X);return И.χ(Ê,B.ə,ω);}return Ê;}}abstract class ҕ{
+public string ư;public string ũ{get;protected set;}public int Ҕ{get;private set;}public bool ғ=true;public bool Ғ;public
+Vector3D?ə;public double?ґ;public int?Ґ;public ӭ ҏ;public Action Ҏ;public Action ҍ;protected int Ҍ;bool ҋ;protected Ӡ ľ;
+protected ҕ(string ó,Ӡ B,bool Ѫ=true){ũ=ó;ľ=B;ư=ó;ҏ=new ӭ();ҋ=Ѫ;}public void ѫ(int J){Ҕ=J;}public virtual void Ѭ(ˊ ѭ,ˊ Ѯ){ҏ.Ӧ=ѭ;ҏ
+.ӥ=Ѯ;}public abstract bool ɋ(int Ŭ,Ħ Ɯ);public bool ѯ(int Ŭ,Ħ Ɯ){if(Ґ.HasValue&&(Ŭ-Ҍ>Ґ))return true;return ɋ(Ŭ,Ɯ);}bool Ѱ
+;public void ѱ(Ӡ B,int Ŭ){if((B.Ք?.Status==MyShipConnectorStatus.Connected)&&ҋ){ɲ.ɧ($"{ư}: forcing depart");B.Ơ.ў(ҏ.ӥ);
+return;}if(B.ՙ?.IsLocked==true){B.ՙ.Unlock();B.Ɯ.Ģ(PState.WP);}if(Ҍ==0)Ҍ=Ŭ;B.Տ.ª(ũ+".OnStart");if(!Ѱ){Ѱ=true;ɲ.ɧ(
+$"Starting task {ũ}-{Ҕ}");ҍ?.Invoke();}else ɲ.ɧ($"Resuming task {ũ}-{Ҕ}");}}class ѩ:ҕ{Func<bool>ƛ;public ѩ(Ӡ B,int ѧ=0):base(ѧ==0?
+"wait-for-signal":$"wait-{ѧ}t",B,false){if(ѧ!=0)Ґ=ѧ;ҏ.ư="Wait";}public ѩ(Ӡ B,Func<bool>Ѩ,int ѧ=0):base("wait-for-condition",B,false){if(ѧ
+!=0)Ґ=ѧ;ҏ.ư="Wait";ƛ=Ѩ;}public override bool ɋ(int Ŭ,Ħ Ɯ){return Ґ.HasValue&&(Ґ.Value<(Ŭ-Ҍ))||(ƛ?.Invoke()==true);}}class
+Ѧ:ҕ{public Ѧ(Action ŋ):base("exec",null,false){Ҏ=ŋ;}public override bool ɋ(int Ŭ,Ħ Ɯ){return true;}}class ѹ:ҕ{double ѷ;
+public ѹ(Vector3D Ñ,Ӡ B,double Ѹ,bool Χ):base("move",B){ѷ=Ѹ*Ѹ;ҏ.ӧ=true;var Ǔ=new ˊ(1,ư,null);ҍ=()=>Ǔ.ˈ(Ñ,Ô);ə=Ñ;ҏ.Ӳ=true;ҏ.Ө=
+true;ҏ.ӥ=Ǔ;ҏ.Ӧ=Ǔ;ҏ.Ӫ=Χ;if(Χ)ѷ=400;ҏ.ӯ=Ф.ҁ;}public override bool ɋ(int Ŭ,Ħ Ɯ){var ʒ=(ҏ.Ӵ?.Invoke()??ľ.ə-ҏ.ӥ.ˍ.Value).
+LengthSquared();if(ʒ<100)ҏ.Ӧ=null;return ʒ<ѷ;}}class Ѻ:ѹ{Vector3D ѻ;Vector3D ƛ;public Ѻ(Vector3D?Τ,Ӡ B,Vector3D?Ě):base(Vector3D.Zero
+,B,0,false){ũ="land";ҍ=()=>{if(!Τ.HasValue){if(B.Ɖ()){double φ;B.Ɯ.Ί.TryGetPlanetElevation(MyPlanetElevation.Surface,out
+φ);ƛ=B.ə+Vector3D.Normalize(B.Ɯ.Η.Value)*φ;}else B.Ơ.щ();}else ƛ=Τ.Value;ə=ƛ;if(!Ě.HasValue){if(B.Ɖ())ѻ=Vector3D.
+Normalize(B.Ɯ.Η.Value);else B.Ơ.щ();}else ѻ=Ě.Value;var Ϝ=ƛ-B.ə;if(Ϝ.Length()>500){if(B.Ӟ.Get<bool>("capital-behavior"))B.Ơ.ъ(new
+ѹ(ƛ-Vector3D.Normalize(Ϝ)*400-ѻ*Ϝ.Length()/4f,B,50,false));else B.Ơ.ъ(new ѹ(ƛ-Vector3D.Normalize(Ϝ)*400-ѻ*Ϝ.Length()/4f,B
+,5,true));}};ҏ.ӯ=null;ҏ.ө=true;ҏ.ӵ=(Ê,ŋ,Y)=>B.ՙ.GetPosition()+ѻ*1000;ҏ.Ӯ=(Ê,ŋ,Y)=>ƛ;ҏ.Ӵ=()=>B.ՙ.GetPosition()+B.ՙ.
+WorldMatrix.Down*(IsLargeGrid?3.2:0.55);ҏ.ӳ=()=>{var Ì=MatrixD.CreateFromDir(B.ՙ.WorldMatrix.Down);Ì.Translation=B.ՙ.WorldMatrix.
+Translation;return Ì;};}public override bool ɋ(int Ŭ,Ħ Ɯ){if(ľ.ՙ.IsLocked){ľ.Ɯ.Ģ(PState.Inert);return true;}return false;}}class Ѷ:
+ҕ{Vector3D?ѵ;Vector3D Ѵ;double ѳ;double ы;double Ѳ=50;public Ѷ(Ӡ B,Vector3D?ֆ=null):base("cruise-fw",B){Ғ=true;var Ɔ=new
+ӭ(){ư="APckTaskCruise Behavior",ө=true};ľ=B;ҍ=()=>{Ѵ=B.ə;ľ.Ր.TryGetPlanetElevation(MyPlanetElevation.Surface,out ѳ);if(ľ.
+Ɖ())ы=(B.Ɗ.Value-B.ə).Length();};ѵ=ֆ;Ɔ.ӯ=Ф.ҁ;Ɔ.Ӯ=ג;Ɔ.ӵ=և;Ɔ.Ӫ=true;ҏ=Ɔ;}Vector3D և(Vector3D Ñ,Ӡ B,ӭ Y){Vector3D Ǵ;if(ľ.Ɖ()
+){Ǵ=ľ.ə+Vector3D.Cross(ľ.Ɯ.Η.Value,ľ.Ɯ.ͼ.WorldMatrix.Left);}else{if(ѵ.HasValue){Ǵ=ľ.ə+ѵ.Value;}else{Ǵ=ľ.ə+ľ.Ɯ.ͼ.
+WorldMatrix.Forward;}}return Ǵ;}Vector3D ג(Vector3D Ñ,Ӡ B,ӭ Y){Vector3D Ǵ;if(ѵ.HasValue){Ǵ=Ѵ+ѵ.Value*((ľ.ə-Ѵ).Length()+5);}else Ǵ=ľ
+.Ɯ.ʛ(100);if(ľ.Ɖ()&&!ѵ.HasValue){Ǵ=Vector3D.Normalize(Ǵ-ľ.Ɗ.Value)*ы+ľ.Ɗ.Value;}return Ǵ;}double א;double ב;public
+override bool ɋ(int Ŭ,Ħ Ɯ){if(ľ.Ր.TryGetPlanetElevation(MyPlanetElevation.Surface,out א)){}if(א<Ѳ){ɲ.ɫ($"e: {א}");if(א<ѳ){ы=(ľ.Ɗ
+.Value-ľ.ə).Length()+(ѳ-א);}ɲ.ɫ($"elevCap: {ѳ}");ɲ.ɫ($"cooldown: {ב}");}return false;}}class օ:ҕ{float ք;protected ק Ȣ;
+IMyShipMergeBlock փ;public օ(Ӡ B,ק È,ˊ Ǔ,IMyShipMergeBlock Y):base("jab",B){if(È!=null){Ȣ=È;ҍ=()=>È.ѫ();Ҏ+=()=>È.ԁ();}var ւ=È?.ɞ??Ǔ??new
+ˊ(1,"dumb jab",null);ҍ+=()=>{Vector3D Ñ=B.Ɯ.ʛ(ք);if(Y!=null){ҏ.ӳ=()=>{var Ì=IsLargeGrid?MatrixD.CreateFromDir(Y.
+WorldMatrix.Right,Y.WorldMatrix.Up):MatrixD.CreateFromDir(Y.WorldMatrix.Up,Y.WorldMatrix.Right);Ì.Translation=Y.WorldMatrix.
+Translation;return Ì;};Ñ=Y.WorldMatrix.Translation+ҏ.ӳ().Forward*ք;}if(!ւ.ˍ.HasValue){ւ.ˈ(Ñ,Ô);}};փ=Y;ҏ.ӥ=ւ;ҏ.Ӧ=ւ;Ҏ=()=>ľ.Ɵ.ǐ();ғ=
+false;ք=1000;ҏ.Ӫ=true;}int ց;public override bool ɋ(int Ŭ,Ħ Ɯ){if(ҏ.Ӧ.ˆ()){if(Ɯ.Ζ>0.9){var Ì=Vector3D.Dot((ҏ.ӳ?.Invoke()??Ɯ.ͼ
+.WorldMatrix).Forward,Ɯ.ˎ);var Ö=(ҏ.Ӧ.ˍ.Value-ľ.ə).Length();if((ց==0)&&(Ì>MAX_SP-0.2)&&ľ.Ɵ.ǝ((float)(Ö/Ì)+ľ.Ӟ.Get<float>(
+"torpedo-fuse-offset"),ҏ.Ӧ.ˌ,փ)){ց=1;Ҍ=Ŭ;ҏ.Ӯ=(Ñ,ŋ,Y)=>ŋ.ə+(ҏ.ӳ?.Invoke()??Ɯ.ͼ.WorldMatrix).Forward*(-150);ɲ.ɧ($"jabe release at tick {Ҍ}");}}
+}if((ց==0)&&(Ŭ-Ҍ>120))return true;if((ց==1)&&(Ŭ-Ҍ>60))return true;return false;}}class ו:ҕ{Vector3D?ז;Dictionary<float,
+IMyTimerBlock>µ=new Dictionary<float,IMyTimerBlock>();bool ח;void ź(ˊ Ǔ,Ӡ B){ғ=false;ľ=B;ҏ.Ӧ=Ǔ;ҏ.ӥ=Ǔ;ҏ.Ӫ=true;ҏ.Ӳ=true;ҏ.Ө=true;
+foreach(var Ã in B.Տ.º){var Ǵ=System.Text.RegularExpressions.Regex.Match(Ã.CustomName,@"(?<=proximity)(\d+)");float Ű;if(Ǵ.
+Success&&float.TryParse(Ǵ.Value,out Ű))µ.Add(Ű,Ã);}}public ו(Ӡ B,ˊ Ǔ):base("ram",B){ź(Ǔ,B);}public ו(Ӡ B,Vector3D Ñ):base("ram"
+,B){ח=true;var Ǔ=new ˊ(1,"dumb attack",null);Ǔ.ˈ(Ñ,Ô);ź(Ǔ,B);}public ו(Ӡ B,ק ջ):base("ram",B){ҍ=()=>ջ.ѫ();Ҏ=()=>ջ.ԁ();ź(ջ
+.ɞ,B);}public override bool ɋ(int Ŭ,Ħ Ɯ){if(ҏ.Ӧ.ˍ!=null)ז=ҏ.Ӧ.ˍ.Value;else if(ז.HasValue)ҏ.Ӧ.ˈ(ז.Value,Ô);var X=Ɯ;var B=ľ
+;var Ö=(X.ͻ-X.ͼ.GetPosition()).Length();var ה=Vector3D.Normalize(X.ͻ-X.ͼ.GetPosition());var б=ҏ.Ӧ.ˎ??Vector3D.Zero;var ד=
+Vector3D.Dot(ה,X.ˎ-б);if(X.ģ)ҏ.ӱ=()=>ה*MAX_SP;foreach(var Ã in µ){if(Ã.Key>Ö&&(Ã.Value.Enabled)){Ϫ(Ã.Value);Ã.Value.Enabled=
+false;}}var ǥ=(float)((Ö-10)/Math.Max(0.05*MAX_SP,ד));ɲ.ɫ($"d: {Ö:f2}");if(!B.Ֆ.Any(Ĉ=>Ĉ.IsWorking)||X.ͼ.GetPosition()==
+Vector3D.Zero){B.ԣ?.ԧ(B);return true;}if(Ö<100){B.Ֆ.ForEach(Ê=>{Ê.IsArmed=true;if(Ê.DetonationTime>0)Ê.DetonationTime=Math.Min(ǥ
+,Ê.DetonationTime);Ê.StartCountdown();});}else if(Ö<250){ҏ.Ӯ=null;}else if((Ö<1200)&&(ד<500)){var Ϥ=Vector3D.
+CalculatePerpendicularVector(ה);var Ê=Vector3D.Cross(ה,Ϥ);if(X.ģ)ҏ.Ӯ=(Ñ,ŋ,Y)=>Ñ+Vector3D.Normalize(X.ͼ.GetPosition()-Ñ)*(Ö-100)+Ê*30*Math.Cos(Math.
+PI*(Ô/60f/2f))+Ϥ*30*Math.Sin(Math.PI*(Ô/60f/2f));else{var Ǖ=ח?Vector3D.Zero:б;var մ=(Ö-200)/50;ҏ.Ӧ.ˎ=Ф.Ѽ(Ф.Ѽ(Ǖ,Ϥ*մ,ɲ.Ú),Ê*
+մ,ɲ.Ú);}}else if(X.ˎ.Length()>100){ҏ.Ӯ=null;if(X.ģ)ҏ.ӱ=()=>X.ˎ;}return false;}}class յ:ҕ{ק ն;void ź(ˊ Ǔ,Ӡ B){ғ=false;ҏ.ӧ=
+true;ľ=B;ҏ.Ӧ=Ǔ;ҏ.ӥ=Ǔ;ҏ.Ӫ=false;ҏ.ӯ=Ф.Ҋ;ҏ.ӵ=Ф.е;Ҏ=()=>B.Ɵ.Ƃ();}public յ(Ӡ B,Vector3D Ñ):base("attack",B){var Ǔ=new ˊ(1,
+"dumb attack",null);ź(Ǔ,B);ҍ=()=>{Ǔ.ˈ(Ñ,Ô);var ɹ=B.Ɯ.ͼ;var ճ=ɹ.WorldMatrix;var Т=B.Ɖ()?ճ.Translation-B.Ɗ.Value:ճ.Up;Т/=Т.Length();ҏ.Ӯ
+=(Ê,ŋ,Y)=>{var Ǵ=Ф.ѽ(Ê,B.Ɵ.Ř,Т*400,ŋ.ə);Ǵ=Ф.Н(Ǵ,B,Y);return Ф.Ѽ(Ǵ,Т*30,ɲ.Ú);};};}public յ(Ӡ B,ˊ Ǔ):base("attack",B){ź(Ǔ,B
+);ҏ.Ӫ=true;ҏ.Ӯ=(Ñ,ŋ,Y)=>{var Ê=Ф.У(Ñ,B,Y,B.Ɵ.Ř);var ѿ=Vector3D.Normalize(Ñ-B.ə);var Ǖ=Vector3D.Cross(Vector3D.Normalize(Ê
+-B.ə),ѿ);Ê=Ф.Ѽ(Ê,Vector3D.Cross(Ǖ,ѿ)*0.5,ɲ.Ú);return Ê;};ҏ.Ӯ=(Ñ,ŋ,Y)=>Ф.к(Ñ,ŋ,Y,false,B.Ɵ.Ř);}public յ(Ӡ B,ק ջ):base(
+"attack",B){ն=ջ;ҍ=()=>ջ.ѫ();Ҏ=()=>ջ.ԁ();ź(ջ.ɞ,B);bool м=false;ҏ.Ӯ=(Ñ,ŋ,Y)=>Ф.к(Ñ,ŋ,Y,м,B.Ɵ.Ř);}public override bool ɋ(int Ŭ,Ħ Ɯ)
+{if(ҏ.Ӧ.ˆ()){ľ.Ɵ.ǔ(ҏ.Ӧ);return false;}if(ҏ.Ӧ.ˁ())return true;return false;}}class տ:ҕ{List<Vector3D>ռ;int ս;Vector3D ƛ;
+float վ;public տ(Ӡ B,ק ր,ק պ,List<Vector3D>Æ,bool É,long չ):base("dpath",B,false){ғ=false;ռ=Æ;վ=B.Ӟ.Get<float>(
+"dpath-speed-limit");ҍ=()=>{ր.ѫ();պ.ѫ();if(É){B.Ք.Disconnect();B.Ɯ.Ģ(PState.WP);}};Ҏ=()=>{ր.ԁ();պ.ԁ();if(É)B.Ơ.ё(չ);};var ո=պ.ɞ;ҏ.Ӧ=ո;ҏ.ӵ=(
+Ñ,ŋ,Y)=>B.Ք.GetPosition()-ո.ˬ.Value.Forward*10000;ҏ.ӳ=()=>B.Ք.WorldMatrix;ҏ.Ӵ=()=>B.Ք.GetPosition();ҏ.ӯ=(Ñ,ŋ,Y)=>ո.ˬ?.Up
+??Vector3D.Zero;ҏ.ӥ=ր.ɞ;ҏ.Ӯ=(Ñ,ŋ,Y)=>ƛ;}public override bool ɋ(int Ŭ,Ħ Ɯ){var Ȏ=ҏ.ӥ.ˬ;if(Ȏ.HasValue){ƛ=Vector3D.Transform(
+ռ[ս],Ȏ.Value);if((ľ.Ք.GetPosition()-ƛ).LengthSquared()<3){if((վ>0)&&(ս!=ռ.Count-1))ҏ.Ӷ=վ;if(++ս==ռ.Count)return true;}}
+else ƛ=ľ.ə;return false;}}class ט:ҕ{Vector3D?ƛ;Vector3D?ء;MatrixD?آ;Vector3D?أ;IMySensorBlock ؤ;public ט(Ӡ B,IMySensorBlock
+Å,Vector3D?Ě):base("follow-playa",B){ؤ=Å;ľ=B;أ=Ě;ź(new ˊ(1,"sensor",null));}public ט(Ӡ B,ק ջ,Vector3D?Ñ=null):base(
+"follow",B){ľ=B;ƛ=Ñ;ź(ջ.ɞ);ҍ=()=>ջ.ѫ();Ҏ=()=>ջ.ԁ();}void ź(ˊ Ǔ){Ғ=true;ҏ.ư="follow";ҏ.Ӯ=(Ê,B,Y)=>آ.HasValue?Vector3D.Transform(ء
+.Value,آ.Value):B.ə;ҏ.ӵ=(Ê,B,Y)=>آ.HasValue?B.ə+(أ.HasValue?Vector3D.Rotate(أ.Value,آ.Value):آ.Value.Forward):B.Ɯ.ʛ(100);
+ҏ.ӯ=(Ê,B,Y)=>آ.HasValue?آ.Value.Up:B.Ɯ.ͼ.WorldMatrix.Up;ҏ.ӥ=Ǔ;ҏ.Ӧ=Ǔ;}public override bool ɋ(int Ŭ,Ħ Ɯ){if(ؤ!=null){var խ=
+ؤ.LastDetectedEntity;if(!խ.IsEmpty()){ҏ.ӥ.ˈ(խ.Position,Ô);ҏ.ӥ.ˎ=խ.Velocity;var Ȏ=խ.Orientation;Ȏ.Translation=խ.Position;ҏ
+.ӥ.ˬ=Ȏ;ҏ.Ӧ=ҏ.ӥ;}}var Ϋ=ҏ.Ӵ?.Invoke()??ľ.ե.GetPosition();if(ƛ.HasValue&&آ.HasValue&&ҏ.Ӥ.HasValue&&(ҏ.Ӥ.Value-Ϋ).
+LengthSquared()<4)return true;if(ҏ.ӥ.ˬ.HasValue){آ=ҏ.ӥ.ˬ;if(!ء.HasValue){ء=ƛ??Vector3D.Rotate(Ϋ-آ.Value.Translation,MatrixD.Transpose
+(آ.Value));}}else آ=null;return false;}}class ؠ:ҕ{public ؠ(Ӡ B,ˊ ײ):base("wingman",B){Ғ=true;ҏ.ӧ=true;ҏ.Ӳ=true;var Ǔ=ײ;ҏ.
+Ӧ=ײ;ҏ.ӥ=ײ;ҏ.ӵ=(Ê,ŋ,Y)=>Ê+Ǔ.ˬ.Value.Forward*5000;ҏ.ӯ=(Ê,ŋ,Y)=>Ǔ.ˬ?.Up??Vector3D.Zero;}public override bool ɋ(int Ŭ,Ħ Ɯ){
+return false;}}class ئ:ҕ{public ئ(Ӡ B,Vector3D Ñ,Vector3D ϗ):base("docking",B){var Ǔ=new ˊ(1,"dumb dock",null);Ǔ.ˈ(Ñ,Ô);var Ì=
+MatrixD.CreateFromDir(ϗ);Ì.Translation=Ñ;Ǔ.ˬ=Ì;ź(Ǔ);}public ئ(Ӡ B,long Ƿ,ק ջ):base("docking",B){ź(ջ.ɞ);ҍ=()=>{ջ.ѫ();ɲ.ɧ(
+$"Sending docking request to {Ƿ}");B.է.SendUnicastMessage(Ƿ,"apck.docking.request",B.Ք.GetPosition());};Ҏ=()=>{B.է.SendUnicastMessage(Ƿ,
+"apck.dpath.complete",B.Ք.GetPosition());ջ.ԁ();};}void ź(ˊ Ǔ){ғ=false;ҏ.ӥ=Ǔ;ҏ.Ӧ=Ǔ;ҏ.ӵ=(Ê,ŋ,Y)=>ľ.Ք.GetPosition()-Ǔ.ˬ.Value.Forward*10000;ҏ.Ӯ=
+(Ñ,ŋ,Y)=>Ñ+Ǔ.ˬ.Value.Forward*(IsLargeGrid?1.25f:0.5f);ҏ.ӳ=()=>ľ.Ք.WorldMatrix;ҏ.Ӵ=()=>ľ.Ք.GetPosition();ҏ.ӯ=(Ê,ŋ,Y)=>Ǔ.ˬ?
+.Up??Vector3D.Zero;}public override bool ɋ(int Ŭ,Ħ Ɯ){var Ö=(ҏ.Ӵ()-Ɯ.ͻ).LengthSquared();if((Ö<20)&&(Ɯ.Ε.Length()<0.8)&&(ľ
+.Ք!=null)){ľ.Ք.Connect();if(ľ.Ք.Status==MyShipConnectorStatus.Connected){ľ.Ɯ.Ģ(PState.Inert);ľ.Ɯ.Ί.DampenersOverride=
+false;return true;}}return false;}}class إ:ҕ{public إ(Ӡ B):base("maintenance",B,false){ғ=false;Ғ=true;ҍ=()=>{B.ա.ForEach(Y=>Y
+.ChargeMode=ChargeMode.Recharge);B.բ.ForEach(Y=>Y.Stockpile=true);B.Ɯ.Ģ(PState.Inert);};Ҏ=()=>{B.ա.ForEach(Y=>Y.
+ChargeMode=ChargeMode.Auto);B.բ.ForEach(Y=>Y.Stockpile=false);B.Ɯ.Ģ(PState.WP);};}public override bool ɋ(int Ŭ,Ħ Ɯ){return false;}
+}class נ:ҕ{Dictionary<string,long>ס;Dictionary<string,long>ע=new Dictionary<string,long>();List<IMyInventory>ץ;List<
+IMyInventory>ף;public נ(Ӡ B,Dictionary<string,string>ǖ):base("cargo",B,false){ғ=false;ҍ=()=>{if(B.Ք.OtherConnector!=null){ן(true);ן(
+false);ס=new Dictionary<string,long>();foreach(var פ in ǖ){int Ǖ;if(int.TryParse(פ.Value,out Ǖ))ס.Add(פ.Key,Ǖ);}foreach(var Ö
+in ס)ɲ.ɧ($"Desired: {Ö.Key}: {Ö.Value}");}};}void ן(bool ƒ){var X=ƒ?ץ:ף;var מ=ľ.Ք.GetInventory(0);var ם=new List<
+IMyCargoContainer>();ľ.զ.GetBlocksOfType(ם,Y=>Y.IsSameConstructAs(ƒ?ľ.Ք:ľ.Ք.OtherConnector)&&Y.HasInventory&&(Y is IMyCargoContainer));X=
+ם.Select(Ê=>Ê.GetInventory(0)).Where(Ê=>Ê.IsConnectedTo(מ)).OrderByDescending(Ê=>(int)Ê.MaxVolume).ToList();}List<
+MyInventoryItem>ל=new List<MyInventoryItem>();void כ(bool ך,string Ð,int י){var Ë=ך?ץ:ף;var Л=ך?ף:ץ;foreach(var Ö in Ë){ל.Clear();Ö.
+GetItems(ל);foreach(var Ê in ל){if(Ê.Type.ToString().Contains(Ð)){if(ך)י*=-1;if(י>0){if(Ö.TransferItemTo(Л.OrderByDescending(Ƈ=>
+(int)Ƈ.MaxVolume).First(),Ê,י)){ɲ.ɧ($"{(ך?"Pushed":"Pulled")} {Ê.Type}: {י}");return;}}}}}}public override bool ɋ(int Ŭ,Ħ
+Ɯ){ע.Clear();foreach(var Ö in ס)ע.Add(Ö.Key,0);foreach(var Ö in ץ){List<MyInventoryItem>ʉ=new List<MyInventoryItem>();Ö.
+GetItems(ʉ);foreach(var Ê in ʉ){var Ð=ע.Keys.FirstOrDefault(Ï=>Ê.Type.ToString().Contains(Ï));if(Ð!=null)ע[Ð]+=Ê.Amount.RawValue
+/1000000;}}bool Ű=false;foreach(var Ö in ס){var ת=Ö.Value-ע[Ö.Key];if(ת!=0){Ű=true;כ(ת<0,Ö.Key,(int)ת);}}if(Ű)ɲ.ɫ(
+"Working with cargo");return!Ű;}}class װ:ҕ{public װ(ӿ ԇ,Ӡ B):base("atst",B,false){var ױ=new ק("apck.report",true,ԇ,Ã=>false);var ש=new ק(
+"tgp.global.gridsense.update",true,ԇ,Ã=>false);Action<MyIGCMessage,ˊ>X=(Ì,Ǔ)=>{var Ö=(MyTuple<MyTuple<string,byte,int,long>,Vector3D,Vector3D,
+Vector3D,string>)Ì.Data;var ω=new BoundingSphereD(Ö.Item2,10);var ר=new RayD(B.ə,B.Ɯ.ͼ.WorldMatrix.Forward);ɲ.ɧ(
+$"apck.report converter invoke, {Ì.Source}, {Ö.Item2}");if(ω.Intersects(ר).HasValue&&Ì.Source!=0){ɲ.ɧ($"TargetId: {Ì.Source}");B.Ơ.ұ=Ì.Source;B.Ơ.Ҷ=Ö.Item1.Item4;B.Ơ.ҳ=
+$"{(B.ե.GetPosition()-Ö.Item2).Length():f1}m: {Ö.Item1.Item1}";}};ש.Ԅ=(Ì,Ǔ)=>{var ר=new RayD(B.ə,B.Ɯ.ͼ.WorldMatrix.Forward);var ω=new BoundingSphereD(Ǔ.ˍ.Value,20);ɲ.ɧ(
+$"gridsense OnMsgConsumed, {Ǔ.ˌ}, {Ǔ.ˍ.Value}");if(ω.Intersects(ר).HasValue&&Ǔ.ˌ!=0){ɲ.ɧ($"TargetId: {Ǔ.ˌ}");B.Ơ.ұ=Ǔ.ˌ;B.Ơ.ҳ=
+$"{(B.ե.GetPosition()-Ǔ.ˍ.Value).Length():f1}m: {Ǔ.ư}";}};ҍ=()=>{ױ.ԉ(X).ѫ();ש.ѫ();};Ҏ=()=>{ױ.ԁ();ש.ԁ();if((B.Ջ!=null)&&B.Ơ.Ҷ.HasValue)B.է.SendUnicastMessage(B.Ջ.EntityId,
+"menucommand.set-context",B.Ơ.Ҷ.Value);};}public override bool ɋ(int Ŭ,Ħ Ɯ){return false;}}class ק{public string צ;public ˊ ɞ;public Action<
+MyIGCMessage,ˊ>Ԃ;public Func<ˊ,bool>Ա;public bool ԃ;public Action<MyIGCMessage,ˊ>Ԅ;ӿ ԅ;public ק(string Ț,bool Ԇ,ӿ ԇ,Func<ˊ,bool>Ѩ=
+null){ԃ=Ԇ;צ=Ț;Ա=Ѩ;ɞ=new ˊ(1,Ț+"--listener",60);Ԃ=(Ë,Ǔ)=>{var Ԉ=(MyTuple<MyTuple<string,long,long,byte,byte>,Vector3D,
+Vector3D,MatrixD,BoundingBoxD>)Ë.Data;Ǔ.Ϻ(Ë.Source,Ԉ,Ô);};ԅ=ԇ;}public ק ԉ(Action<MyIGCMessage,ˊ>Ԋ){Ԃ=Ԋ;return this;}int ԋ;public
+void ѫ(){if(!ԅ.Ӿ.Contains(this)){ԅ.Ӿ.Add(this);}ԋ++;ɲ.ɧ($"IgcL Register '{ɞ.ư}', refs: {ԋ}");ԅ.Ԗ(צ,ԃ);}public void ԁ(){if(ԋ>
+0){ɲ.ɧ($"IgcL Unregister '{ɞ.ư}', --refs: {ԋ-1}");ԅ.Ԙ(צ);if(--ԋ==0){ԅ.Ӿ.Remove(this);ɲ.ɧ($"IgcL '{ɞ.ư}' kill");}}}}ӿ Ԁ;
+class ӿ{public List<ק>Ӿ=new List<ק>();class ӽ{public string Ӽ;public int ӻ;public List<MyIGCMessage>Ӻ=new List<MyIGCMessage>(
+);public IMyBroadcastListener ӹ;}Dictionary<string,ӽ>Ӹ=new Dictionary<string,ӽ>();IMyIntergridCommunicationSystem Ή;
+public ӿ(IMyIntergridCommunicationSystem R){Ή=R;}public void Ӊ(List<MyIGCMessage>Ù){foreach(var È in Ӹ.Values){È.Ӻ.Clear();if(
+È.ӹ!=null){while(È.ӹ.HasPendingMessage)È.Ӻ.Add(È.ӹ.AcceptMessage());}else{foreach(var Ì in Ù){if(Ì.Tag==È.Ӽ)È.Ӻ.Add(Ì);}}
+}foreach(var Ȍ in Ӿ){if(!Ӹ.ContainsKey(Ȍ.צ))ɲ.ɫ($"{Ȍ.צ}(CHANNEL ERROR!)");else{var Ԛ=Ӹ[Ȍ.צ];ɲ.ɫ($"{Ȍ.צ}({Ԛ.Ӻ.Count})");
+foreach(var K in Ԛ.Ӻ){Ȍ.Ԃ(K,Ȍ.ɞ);Ȍ.Ԅ?.Invoke(K,Ȍ.ɞ);if((Ȍ.Ա==null)||Ȍ.Ա(Ȍ.ɞ))break;}}}}public void Ԗ(string Ț,bool ԗ=true){if(!
+Ӹ.ContainsKey(Ț)){Ӹ.Add(Ț,new ӽ(){Ӽ=Ț,ӹ=ԗ?Ή.RegisterBroadcastListener(Ț):null,ӻ=1});}else Ӹ[Ț].ӻ++;ɲ.ɧ(
+$"Q {Ț} enable, refs: {Ӹ[Ț].ӻ}");}public void Ԙ(string Ț){if(Ӹ.ContainsKey(Ț)){ɲ.ɧ($"Q {Ț} disable, refs: {Ӹ[Ț].ӻ-1}");if(--Ӹ[Ț].ӻ<=0){ɲ.ɧ(
+$"Q {Ț} kill");if(Ӹ[Ț].ӹ!=null)Ή.DisableBroadcastListener(Ӹ[Ț].ӹ);Ӹ.Remove(Ț);}}}public ק ԙ(long Ё){Action<MyIGCMessage,ˊ>X=(Ê,Ǔ)=>{
+var Ԉ=(MyTuple<MatrixD,Vector3D>)Ê.Data;Ǔ.ˈ(Ԉ.Item1.Translation,Ô);Ǔ.ˬ=Ԉ.Item1;Ǔ.ˎ=Ԉ.Item2;Ǔ.ˤ=Ê.Source;};return new ק(
+"apck-position",true,this,Ê=>Ê.ˤ==Ё).ԉ(X);}public ק ԛ(long Ƿ){return new ק("tgp.global.gridsense.update",true,this,Ê=>Ê.ˌ==Ƿ);}public ק
+ԕ(string Ԕ){return new ק("apck.ntv.update",false,this,Ê=>Ê.ư==Ԕ);}}void ԓ(List<string>Ȍ,bool Ԓ){foreach(var Ã in Ȍ){if(Ԓ
+&&Ã.Contains("signal"))continue;ԏ(Ã.Split(new[]{':'},StringSplitOptions.RemoveEmptyEntries),ӡ);Ԓ=false;}}List<string>ԑ=new
+List<string>();ҕ Ԑ=new ѩ(null);void ԏ(string[]ƶ,Ӡ B,bool Ԏ=false){var Ã=ӛ(ƶ,B);if(Ԏ)B.Ơ.ъ(Ã);else{B.Ơ.ѐ(Ã);ԑ.Add(string.Join
+(":",ƶ));}}void ԍ(string[]ƶ){var Ԍ=ƶ[2];if(Ԍ=="dock"&&(ӡ.Ք?.OtherConnector!=null)){if(ӡ.Ơ.ұ.HasValue)ԏ(
+$"command:create-task:dock:TargetId={ӡ.Ơ.ұ.Value}".Split(':'),ӡ);else if(ǿ.ǽ!=0)ԏ($"command:create-task:dock:TargetId={ǿ.ǽ}".Split(':'),ӡ);else{var Ѡ=ӡ.Ք.OtherConnector;
+var Ì=Ѡ.WorldMatrix;var Ě=Ì.Forward;var Ñ=Ì.Translation+Ì.Forward*(Ѡ.CubeGrid.GridSizeEnum==MyCubeSize.Large?1.25:0.5);ԏ(
+$"command:create-task:dock:AimNormal={Ě.X};{Ě.Y};{Ě.Z}:{Џ(Ñ)}".Split(':'),ӡ);}}if(Ԍ=="land"&&(ӡ.ՙ!=null)){var Ñ=ӡ.ՙ.GetPosition()+ӡ.ՙ.WorldMatrix.Down*(IsLargeGrid?3.2:0.55);var Ě=ӡ.
+ՙ.WorldMatrix.Down;var C=$"command:create-task:land:AimNormal={Ě.X};{Ě.Y};{Ě.Z}:{Џ(Ñ)}";ԏ(C.Split(':'),ӡ);}if(Ԍ=="move"){
+var C=$"command:create-task:move:{Џ(ӡ.ə)}";ԏ(C.Split(':'),ӡ);}}ҕ ӛ(string[]ƶ,Ӡ B){try{ɲ.ɧ(
+$"Parsing task: {string.Join(":",ƶ)}");ҕ х;var Ӛ=ƶ[2];Dictionary<string,string>ɷ=null;Vector3D?Ɉ=B.Ơ.Ҳ;int ә=3;if((ƶ.Length>3)&&ƶ[3].Contains("=")){ɷ=ƶ[3].
+Split(',').ToDictionary(Å=>Å.Split('=')[0],Å=>Å.Split('=')[1]);ә=4;}if(ƶ.Length>4){var Ә=ƶ.Take(ә+3).Skip(ә).ToArray();Ɉ=new
+Vector3D(double.Parse(Ә[0]),double.Parse(Ә[1]),double.Parse(Ә[2]));}var ӗ=ɸ<string>(ɷ,"Name");var J=ɸ<long?>(ɷ,"TargetId")??B.Ơ.
+ұ??-1;var Ӗ=ɸ<int?>(ɷ,"Ticks");Vector3D?Ě=null;var ӕ=ɸ<string>(ɷ,"AimNormal");if(ӕ!=null){var Ǖ=ӕ.Split(';');Ě=new
+Vector3D(double.Parse(Ǖ[0]),double.Parse(Ǖ[1]),double.Parse(Ǖ[2]));}float?Ӕ=ɸ<float?>(ɷ,"SpeedLimit");switch(Ӛ){case"orbit":var
+Ӓ=ɸ<int?>(ɷ,"R")??500;var X=ӡ.ə+ӡ.Ɯ.ͼ.WorldMatrix.Forward*Ӓ;х=new ѹ(X,ӡ,100,true);х.ҏ.Ӯ=(Ê,ŋ,Y)=>Ф.ѽ(X,Ӓ,new Vector3D(0,1
+,0),ŋ.ə);break;case"wait":х=new ѩ(B,Ӗ??0);break;case"wait-for-signal":х=new ѩ(B);ԑ.Clear();break;case"exec":х=new Ѧ(()=>B
+.Ǣ.D(ɸ<string>(ɷ,"FollowUp").Replace(';',':'),B));break;case"cruise-fw":х=new Ѷ(B,null);break;case"move":х=new ѹ(Ɉ.Value,
+B,1,B.Ӟ.Get<bool>("move-through"));break;case"move-rel":х=new ѹ(Ɉ.Value,B,1,B.Ӟ.Get<bool>("move-through"));х.ҍ=()=>{х.ҏ.ӥ
+.ˈ(Vector3D.Transform(Ɉ.Value,ӡ.ե.WorldMatrix),Ô);var ŋ=ӡ.ե.WorldMatrix.Forward;х.ҏ.ӵ=(Ñ,Ê,Y)=>B.ə+ŋ*100;};х.ə=null;break
+;case"jab":х=new օ(B,J!=-1?Ԁ.ԛ(J):null,null,null);break;case"ram":if(Ɉ.HasValue)х=new ו(B,Ɉ.Value);else х=new ו(B,Ԁ.ԛ(J))
+;break;case"attack":if(Ɉ.HasValue)х=new յ(B,Ɉ.Value);else х=new յ(B,Ԁ.ԛ(J));break;case"follow":if(J!=-1)х=new ט(B,Ԁ.ԙ(J))
+;else х=new ט(B,(IMySensorBlock)B.զ.GetBlockWithName("sensor-apck"),Ě);break;case"wingman":х=new ؠ(B,ǿ.Ǽ.ɞ);break;case
+"dock":if(B.Ք!=null){if(J!=-1)х=new ئ(B,J,Ԁ.ԕ("docking"));else х=new ئ(B,Ɉ.Value,Ě.Value);}else х=Ԑ;break;case"cargo":if(B.Ք!=
+null)х=new נ(B,ɷ);else х=Ԑ;break;case"land":if(B.ՙ!=null)х=new Ѻ(Ɉ,B,Ě);else х=Ԑ;break;default:х=Ԑ;break;}х.ư=ӗ??Ӛ;х.Ґ=Ӗ??х.
+Ґ;х.ҏ.Ӷ=Ӕ??х.ҏ.Ӷ;return х;}catch(Exception ex){ɲ.ɧ(ex.ToString());}return null;}static Vector3I[]Ӝ={new Vector3I(1,0,0),
+new Vector3I(-1,0,0),new Vector3I(0,1,0),new Vector3I(0,-1,0),new Vector3I(0,0,1),new Vector3I(0,0,-1)};static Ú ӫ<Ú>(
+IMyCubeBlock Y)where Ú:class,IMyTerminalBlock{foreach(var Ӭ in Ӝ){var X=Y.CubeGrid.GetCubeBlock(Y.Position+Ӭ);if((X!=null)&&(X.
+FatBlock is Ú)&&(X.FatBlock!=Y))return X.FatBlock as Ú;}return null;}class ӭ{public string ư="Default";public Func<Vector3D,Ӡ,ӭ,
+Vector3D>Ӯ;public Func<Vector3D,Ӡ,ӭ,Vector3D>ӵ;public Func<Vector3D,Ӡ,ӭ,Vector3D>ӯ;public Action<double,double,Ħ,ӭ,Ӡ>Ӱ{get;set;}
+public Func<Vector3D>ӱ;public bool Ӳ=false;public Func<MatrixD>ӳ;public Func<Vector3D>Ӵ;public float?Ӷ;public bool Ӫ=false;
+public bool ө;public bool Ө;public bool ӧ;public ˊ Ӧ;public ˊ ӥ;public Vector3D?Ӥ;public Vector3D?ͷ;public Vector3D ӣ;public
+MatrixD?Ӣ;}Ӡ ӡ;class Ӡ{public bool ӟ;public V Ǣ;public Variables Ӟ=new Variables();public ң Ú=new ң();public ɼ ӷ;public List<
+IMyShipMergeBlock>ӝ;public List<IMyShipMergeBlock>Ԝ;public IMyShipMergeBlock Ւ;public IMyShipMergeBlock Փ;public IMyShipConnector Ք;
+public List<IMyShipConnector>Օ;public List<IMyWarhead>Ֆ;public IMyLandingGear ՙ;public List<IMyBatteryBlock>ա;public List<
+IMyGasTank>բ;public List<IMyLargeTurretBase>թ;public List<IMyCameraBlock>գ;public IMyRadioAntenna դ;public IMyGyro ե;public
+IMyGridTerminalSystem զ;public IMyIntergridCommunicationSystem է;public ӿ ը;public Ǿ ǿ;public ɗ Ց;public IMyRemoteControl Ր;public Ħ Ɯ;public
+Á Տ;public IMyProgrammableBlock Վ;public IMyProgrammableBlock Ս;public IMyProgrammableBlock Ռ;public IMyProgrammableBlock
+Ջ;public List<IMyProgrammableBlock>Պ;HashSet<IMyTerminalBlock>Չ=new HashSet<IMyTerminalBlock>();public Vector3D ə{get{
+return Ɯ.ͼ.GetPosition();}}Ú Ո<Ú>(string Z,List<IMyTerminalBlock>Շ,bool Ն=false)where Ú:class,IMyTerminalBlock{Ú Ű;ɲ.ɫ(
+$"Looking for {(Ն?"single":"")} '{Z}' ({typeof(Ú).Name})");var ƅ=Շ.Where(Y=>Y is Ú&&Y.CustomName.Contains(Z)).Cast<Ú>().ToList();Ű=Ն?ƅ.Single():ƅ.FirstOrDefault();if(Ű!=null)Չ.
+Add(Ű);return Ű;}List<Ú>ձ<Ú>(List<IMyTerminalBlock>Շ,string Ě=null)where Ú:class,IMyTerminalBlock{ɲ.ɫ(
+$"Looking for blocks ({typeof(Ú).Name})");var ƅ=Շ.Where(Y=>Y is Ú&&((Ě==null)||Y.CustomName.Contains(Ě))).Cast<Ú>().ToList();foreach(var Y in ƅ)Չ.Add(Y);return
+ƅ;}public Ӡ(IMyProgrammableBlock ɬ,ʌ Ĺ,IMyGridTerminalSystem ú,IMyIntergridCommunicationSystem R,ӿ Ԁ,ɗ ղ,V C){foreach(var
+Ñ in ϩ(ɬ)){if(Ñ=="host")Ԣ=ɿ.ʁ;if(Ñ=="drone")Ԣ=ɿ.ʂ;if(Ñ=="missile")Ԣ=ɿ.ʃ;if(Ñ.Contains("rank"))ԡ=int.Parse(Ñ.Split('=')[1]
+);if(Ñ.Contains("tag"))Ԡ=Ñ.Split('=')[1];}զ=ú;է=R;ը=Ԁ;Ց=ղ;Ǣ=C;ǿ=new Ǿ(120,150,ԡ,this);Func<IMyTerminalBlock,bool>ƅ=Y=>Y.
+CubeGrid==ɬ.CubeGrid;var հ=new HashSet<Vector3I>(Ĺ.ʘ);bool կ=!հ.Any()||DesignMode;Ğ=new Ǝ(ɬ,հ);ɲ.ɧ("defs: "+Ĺ.ʘ.Count);if(!կ){ƅ=
+Ğ.ƌ;}var Ե=new List<IMyTerminalBlock>();ú.GetBlocks(Ե);var ծ=new List<IMyTerminalBlock>();int Q=0;foreach(var խ in հ){var
+Ϊ=Vector3D.Transform(խ*ɬ.CubeGrid.GridSize,ɬ.WorldMatrix);var Y=ɬ.CubeGrid.GetCubeBlock(ɬ.CubeGrid.WorldToGridInteger(Ϊ))
+;if(Y==null){ɲ.ɧ($"GPS:def-issue-{Q++}:{Џ(Ϊ)}:");}else{ծ.Add((IMyTerminalBlock)Y.FatBlock);}}Ե=Ե.Where(Y=>ƅ(Y)).ToList();
+foreach(var Ê in ծ.Except(Ե))ɲ.ɧ($"{Ê.CustomName} did not match");if(LogDefinedBlocks)foreach(var Ê in ծ)ɲ.ɧ($"{Ê.CustomName}")
+;ԟ(Ե);ɲ.ɧ($"Found {Չ.Count}/{հ.Count} core blocks");if(կ){Ğ.š.Clear();Ğ.ƍ(Չ.ToArray());if(Փ!=null){var լ=new Ǝ(Փ,new
+HashSet<Vector3I>());լ.ƍ(Չ.ToArray());Ĺ.ʘ=լ.š;Փ.CustomData=Ĺ.ToString();}Ĺ.ʘ=Ğ.š;Ĺ.ʑ();}}public void ի(IMyShipMergeBlock ժ){var
+Ǳ=ӫ<IMyShipMergeBlock>(ժ);if(Ǳ!=null&&Ǳ.CustomName.Contains("sub-base")&&!Ԧ.Any(Ê=>Ê.Փ==Ǳ)&&!ԥ.Any(Ê=>Ê.Փ==Ǳ)){var ԝ=new
+ʌ(null);ԝ.ʗ(Ǳ.CustomData);var Բ=new HashSet<Vector3I>();var Գ=new Ǝ(Ǳ,ԝ.ʘ);ɲ.ɧ("sub defs: "+ԝ.ʘ.Count);Func<
+IMyTerminalBlock,bool>Դ=Գ.ƌ;var Ե=new List<IMyTerminalBlock>();զ.GetBlocks(Ե);Ե=Ե.Where(Y=>Դ(Y)).ToList();ɲ.ɧ("sub blocks: "+Ե.Count);
+try{var Ó=new Ӡ(this);Ó.ԟ(Ե);Ó.Ɯ.Ģ(PState.Inert);ԥ.Add(Ó);Ó.Ւ=ժ;foreach(var Ñ in ϩ(ժ)){if(Ñ.Contains("tag"))Ó.Ԡ=Ñ.Split('='
+)[1];}}catch(Exception ex){ɲ.ɧ("Sub init failure: "+ex);}}}public void Է(Ӡ Ê,long?Ƿ,bool Զ=false){Ê.ӟ=true;ҕ Ã=null;Ê.Ơ.ұ
+=Ê.Ơ.ұ??Ƿ;if(!Զ){var Τ=Ê.Ւ;foreach(var Ð in ϩ(Τ)){if(Ð=="jab")Ã=new օ(this,null,null,Τ);if(Ð=="spin")Ã=new օ(this,null,
+null,Τ);}}Action Ը=()=>{ɲ.ɧ($"sub-unit[{Ԧ.IndexOf(Ê)}] starts");Ê.Փ.Enabled=false;Ê.Ɯ.Ģ(PState.WP);var S=Ê.Ր.CustomData.Trim
+('\n').Split(new[]{'\n'},StringSplitOptions.RemoveEmptyEntries).Where(Å=>!Å.StartsWith("//"));foreach(var C in S)Ǣ.D(C,Ê)
+;};if(Ã!=null){Ơ.ъ(new Ѧ(Ը));Ơ.ъ(new Ѧ(()=>Ơ.ъ(Ã)));}else Ը();}public void ԧ(Ӡ Ê){Ê.Ɣ();Ԥ.Add(Ê);}public List<Ӡ>Ԧ=new
+List<Ӡ>();public HashSet<Ӡ>ԥ=new HashSet<Ӡ>();public HashSet<Ӡ>Ԥ=new HashSet<Ӡ>();public Ӡ ԣ;public ɿ Ԣ=ɿ.ʀ;public int ԡ=int
+.MaxValue;public string Ԡ="";public Ӡ(Ӡ Ñ){ԣ=Ñ;զ=ԣ.զ;է=ԣ.է;Ց=ԣ.Ց;Ǣ=ԣ.Ǣ;ǿ=ԣ.ǿ;ը=ԣ.ը;}public void ԟ(List<IMyTerminalBlock>Ԟ
+){var ƅ=Ԟ;ɲ.ɧ("subset: "+Ԟ.Count);Պ=ձ<IMyProgrammableBlock>(ƅ);var Թ=new List<IMyProgrammableBlock>();var Մ=ձ<
+IMyMotorStator>(ƅ);զ.GetBlocksOfType(Թ,Қ=>Մ.Any(Ê=>(Ê.Top!=null)&&Ê.Top.CubeGrid==Қ.CubeGrid));Պ.AddRange(Թ);ɲ.ɧ($"PBs: {Պ.Count}");
+foreach(var Y in Պ)է.SendUnicastMessage(Y.EntityId,"apck-handshake","");ե=Ո<IMyGyro>("forward-gyro",ƅ,true);var ɻ=ձ<
+IMyShipController>(ƅ);ӷ=new ɼ(ɻ,Ú);դ=ձ<IMyRadioAntenna>(ƅ).FirstOrDefault();ՙ=ձ<IMyLandingGear>(ƅ).FirstOrDefault();Օ=new List<
+IMyShipConnector>();զ.GetBlocksOfType(Օ,Ê=>Ê.IsSameConstructAs(ե)&&Ê.CustomName.Contains("dock-host"));Օ.ForEach(Ö=>Ö.CustomData="");Ք=Ո
+<IMyShipConnector>("docka",ƅ);ա=ձ<IMyBatteryBlock>(ƅ);բ=ձ<IMyGasTank>(ƅ);թ=new List<IMyLargeTurretBase>();զ.
+GetBlocksOfType(թ,Ê=>Ê.IsSameConstructAs(ե)&&Ê.CustomName.Contains("x-designator"));գ=new List<IMyCameraBlock>();զ.GetBlocksOfType(գ,Ê
+=>Ê.IsSameConstructAs(ե));գ.ForEach(Ê=>Ê.EnableRaycast=true);ӝ=ձ<IMyShipMergeBlock>(ƅ,"sub-unit");Փ=Ո<IMyShipMergeBlock>(
+"sub-base",ƅ);Ԝ=ձ<IMyShipMergeBlock>(ƅ,"dumb-unit");Ֆ=ձ<IMyWarhead>(ƅ);Ր=ձ<IMyRemoteControl>(ƅ).First();var ΐ=ձ<IMyTimerBlock>(ƅ);
+Տ=new Á(ΐ);Լ=new List<IMyTerminalBlock>();Լ.AddRange(ձ<IMyThrust>(ƅ));Լ.AddRange(ձ<IMyArtificialMassBlock>(ƅ));if(!string
+.IsNullOrEmpty(GGEN_GR_TAG)){var õ=new List<IMyGravityGenerator>();var ä=զ.GetBlockGroupWithName(GGEN_GR_TAG);if(ä!=null)
+ä.GetBlocksOfType(õ,Y=>ƅ.Contains(Y));foreach(var Y in õ)Չ.Add(Y);Լ.AddRange(õ);}else Լ.AddRange(ձ<IMyGravityGenerator>(ƅ
+));Ɯ=new Ħ(Ր,է,ե,Ժ,this);var Յ=new List<IMyBlockGroup>();զ.GetBlockGroups(Յ,Ê=>Ê.Name.Contains("[hd-coax]"));var Ճ=new
+List<Ʀ>();foreach(var Ղ in Յ){Ճ.Add(new Ʀ(Ղ,ƙ.Ɨ));}var ƀ=զ.GetBlockGroupWithName("coaxial-weapons");var Ձ=new List<
+IMyUserControllableGun>();if(ӝ.Any()||(Փ!=null)){var Հ=ձ<IMyUserControllableGun>(ƅ);ƀ?.GetBlocksOfType(Ձ,Ê=>Հ.Contains(Ê));}else ƀ?.
+GetBlocksOfType(Ձ,Ê=>Ê.IsSameConstructAs(ե));Ɵ=new Ţ(this);var Կ=MatrixD.Identity;var Ծ=new Vector3D[]{Կ.Forward,Կ.Backward,Կ.Up,Կ.Down
+,Կ.Left,Կ.Right};foreach(var Р in Ծ){var Խ=Ձ.Where(Ĉ=>Vector3D.Dot(Ĉ.WorldMatrix.Forward,Vector3D.TransformNormal(Р,ե.
+WorldMatrix))>0.75).ToList();if(Խ.Any()||(Р==Ծ[0]&&Ճ.Any())){Ɵ.ŗ(Խ,Ճ,ե.CubeGrid,Р);}}Ɵ.ź();Ց.ɍ(this);Ơ=new Ҭ(this);ե.GyroOverride=
+false;if(Ք?.Status==MyShipConnectorStatus.Connected)Ơ.ъ(new إ(this));else Ɯ.Ģ(PState.WP);}List<IMyTerminalBlock>Լ;Ȩ À;int Ի;
+public Ȩ Ժ(){if(À==null)À=new Ȩ(ե,Լ);else if((Ŭ!=Ի)&&(Ŭ%60==0)){Ի=Ŭ;if(Լ.Any(Ê=>!Ê.IsFunctional)){Լ.RemoveAll(Ê=>!Ê.
+IsFunctional);À=new Ȩ(ե,Լ);}}if(Լ.Any(Ê=>Ê is IMyThrust&&(Ê as IMyThrust)?.MaxEffectiveThrust!=(Ê as IMyThrust)?.MaxThrust))À.ɂ();
+return À;}Ǝ Ğ;class Ǝ{public HashSet<Vector3I>š;IMyTerminalBlock ő;MatrixD Ə;public Ǝ(IMyTerminalBlock Ɛ,HashSet<Vector3I>Ö){ő
+=Ɛ;Ə=MatrixD.Transpose(ő.WorldMatrix);š=Ö;}public Vector3I Ɠ(Vector3D Ê){var Ƒ=Ê-ő.GetPosition();var ƒ=Vector3D.Rotate(Ƒ,
+Ə);return Vector3I.Round(ƒ/ő.CubeGrid.GridSize);}public Vector3I Ɠ(IMyCubeBlock Ê){var Ƒ=Vector3D.Rotate(Ê.Position-ő.
+Position,ő.CubeGrid.WorldMatrix);var Ƈ=Vector3D.Rotate(Ƒ,Ə);return Vector3I.Round(Ƈ);}public void ƍ(params IMyTerminalBlock[]Y){
+foreach(var Ê in Y){var È=Ɠ(Ê);š.Add(È);}}public bool ƌ(IMyTerminalBlock Y){return Y.IsSameConstructAs(ő)&&š.Contains(Ɠ(Y));}}
+public Vector3D?Ƌ;public Vector3D?Ɗ;public bool Ɖ(){if(Ɯ.Η!=null){if(Ɗ==null){Vector3D ƈ;if(Ր.TryGetPlanetPosition(out ƈ)){Ɗ=ƈ
+;return true;}}return Ɗ.HasValue;}return false;}public void Ķ(int Ŭ,Action<string>Ƈ){this.Ŭ=Ŭ;try{Ơ.Ӊ(Ŭ);}catch(Exception
+ex){ɲ.ɧ($"Cap.HandleTick failure, task: {Ơ.я()?.ư}");ɲ.ɧ(ex.ToString());}ӭ Ɔ=Ơ.ц();if(դ!=null)դ.CustomName=
+$"{ե.CubeGrid.CustomName}> {Ɔ.ư} / {Ơ.я()?.ũ} ({Ơ.ӄ})";Ɯ.ͱ(Ŭ,Ƈ,Ɔ);Ɵ.ü();foreach(var Ó in Ԧ){try{Ó.Ķ(Ŭ,Ƈ);}catch(Exception ex){ɲ.ɧ("SubUnit failure, removing");Ԥ.Add(Ó);ɲ.ɧ(ex
+.ToString());}}var X=Ԧ.Count;if(ԥ.Any()){Ԧ.AddRange(ԥ);ɲ.ɧ($"SU add: {X}->{Ԧ.Count}");ԥ.Clear();}X=Ԧ.Count;if(Ԥ.Any()){Ԧ.
+RemoveAll(Ê=>Ԥ.Contains(Ê));ɲ.ɧ($"SU remove: {X}->{Ԧ.Count}");Ԥ.Clear();}}public void Ɣ(){Ơ.Ɣ();ԣ.ի(Ւ);foreach(var B in Ԧ)B.Ɣ();}
+public Ţ Ɵ;int Ŭ;public Ҭ Ơ;}class ơ:ҕ{public Func<Vector3D>Ƣ;int ƣ;public ơ(string Z,ӭ Ɔ,int?Ƥ=null):base("deprecated",null){
+ҏ=Ɔ;ư=Z;Ґ=Ƥ;}public ơ(string Z,int?Ƥ=null):base("deprecated",null){ư=Z;Ґ=Ƥ;}public static ơ ƥ(string Z,Vector3D Ñ,ӭ Ɔ){
+var Ã=new ơ(Z,Ɔ);Ã.ґ=0.5;Ã.ə=Ñ;return Ã;}public static ơ ƞ(string Z,Func<Vector3D>Ɲ,ӭ Ɔ){var Ã=new ơ(Z,Ɔ);Ã.ґ=0.5;Ã.Ƣ=Ɲ;
+return Ã;}public override bool ɋ(int Ŭ,Ħ Ɯ){if(Ґ.HasValue&&(Ŭ-ƣ>Ґ)){return true;}if(ґ.HasValue){Vector3D Ñ;var ƛ=ҏ.Ӵ?.Invoke()
+??ľ.ə;if(Ƣ!=null)Ñ=Ƣ();else Ñ=ə.Value;if((ƛ-Ñ).Length()<ґ)return true;}return false;}public ơ ƚ(){return(ơ)this.
+MemberwiseClone();}}public enum ƙ{Ƙ=0,Ɨ=1,Ɩ=2,ƕ=3,Ƅ}class ŭ{public string ż;public float ū=800f;public float Ū;public ƙ ũ;public ŭ(ƙ ó,
+float ñ,float ï,string Z){ũ=ó;ū=ñ;Ū=ï;ż=Z;}}class Ũ{public Ƭ ŧ;public int Ŧ;public int ť;int Ť;public bool ţ(int Ŭ){if(!ŧ.Ƨ)
+return false;if(Ŧ>ŧ.Ʃ.Count){Ť=Ŭ+ť;Ŧ=0;return true;}if(Ť>0){if(Ť>Ŭ)return true;else{Ť=0;}}return false;}}class Ţ{public List<ǆ
+>Š=new List<ǆ>();LinkedList<ŭ>ş=new LinkedList<ŭ>();ǆ Ş;Ӡ ľ;public bool ŝ;public float?Ŝ;public float ś;public float Ś;
+float ř=float.MaxValue;public float Ř;public Ţ(Ӡ B){ľ=B;}public void ŗ(List<IMyUserControllableGun>Ŗ,List<Ʀ>š,IMyCubeGrid ŕ,
+Vector3D Ů){var Ÿ=new ǆ(Ŗ,š,ş,ŕ,Ů,ľ);Š.Add(Ÿ);}List<Ũ>Ź=new List<Ũ>();public void ź(){foreach(var Ż in Š){Ż.ÿ=õ=>Ź.First(Ê=>Ê.ŧ
+==õ).Ŧ++;Ż.ā(Ż.Ǌ.FirstOrDefault()?.ŭ);foreach(var õ in Ż.Ǌ){Ś=Math.Max(Ś,õ.ŭ.ū);ř=Math.Min(ř,õ.ŭ.ū);var Ž=new Ũ(){ŧ=õ};Ź.
+Add(Ž);if(õ.ŭ.ż=="Heavy ballistic S")Ž.ť=6*60;if(õ.ŭ.ż=="Heavy ballistic L")Ž.ť=12*60;if(õ.ŭ.ż=="Rail S")Ž.ť=20*60;if(õ.ŭ.ż
+=="Rail L")Ž.ť=60*60;if(õ.ŭ.ż=="Rocket")Ž.ť=10*60;}if(ľ.թ.Any())ř=IsLargeGrid?700:550;ś=Ś;if(ľ.Ԧ.Any()||ľ.Ԝ.Any())ś=
+PMW_FF_REACTION_R;}Ş=Š.FirstOrDefault();}public void Ƃ(){Š.ForEach(Ê=>Ê.ö());}public ǆ ž(){return Ş;}public void Ć(Vector3D ſ){var ƀ=ž();
+if(ƀ!=null){ƀ.Ć(ſ);ɲ.ɫ($"CurrentMisalign: {ƀ.á:f2}");}}Vector3D Ɓ;public void ƃ(Vector3D Ě){if(Ɓ!=Ě){var ŷ=Š.
+FirstOrDefault(Ê=>Ê.Ǎ==Ě);foreach(var Ų in Š){ɲ.ɧ($"considering face normal {Ų.Ǎ} vs {Ě}");}Ş=ŷ??Ş;}Ɓ=Ě;}public void Ŷ(){var Q=Š.
+IndexOf(Ş);if(++Q>Š.Count-1)Ş=Š.FirstOrDefault();else Ş=Š.ElementAt(Q);ɲ.ɧ($"cycled face to {Ş.Ǎ}");Ɓ=Ş.Ǎ;}int ŵ;public void Ŵ(
+Vector3D ų){var Ų=Ş;if(Ų!=null){var ñ=(ų-ľ.ə).Length();var ű=ľ.Ӟ.Get<float>("wb-range-override");if(ű>0)Ř=ű;else Ř=(ľ.Ú.Ҟ(
+"wb-snipe-range")?Ś:ř)-50;var õ=Ų.ç();var Ű=Ź.First(Ê=>Ê.ŧ==õ);if(Ű.ţ(Ô)||((õ.ŭ.ū<ñ)&&(Ś>ñ)))ů(Ų);else{if(!õ.Ƨ&&(Ô>ŵ+ľ.Ӟ.Get<int>(
+"wb-model-cycle-timeout"))){ŵ=Ô;ů(Ų);}}}Ş=Ų;}void ů(ǆ ƅ){var õ=ƅ.ç();if(õ!=null){var į=ƅ.Ǌ.IndexOf(õ);for(int Q=į+1;;Q++){if(Q==ƅ.Ǌ.Count)Q=0;
+var Ǚ=ƅ.Ǌ[Q];var Ű=Ź.First(Ê=>Ê.ŧ==Ǚ);if((Q==į)||!Ǚ.Ƨ||!Ű.ţ(Ô)){ƅ.ā(Ǚ.ŭ);break;}}}}int ǚ;int Ǜ;float ǜ=50;float Ǟ=10;List<Ǡ
+>Ǥ=new List<Ǡ>();Random ǟ=new Random();class Ǡ{public List<Func<ˊ,bool>>ǡ=new List<Func<ˊ,bool>>();public string Ǣ;public
+bool ǣ(ˊ Ǔ)=>ǡ.All(Ê=>Ê(Ǔ));}public void ǘ(string[]Ǘ){var ǖ=Ǘ[2].Split(',').ToDictionary(Å=>Å.Split('=')[0],Å=>Å.Split('=')[
+1]);var ǒ=new Ǡ(){Ǣ=string.Join(":",Ǘ.Skip(3))};foreach(var Ǖ in ǖ){if(Ǖ.Key=="chance")ǒ.ǡ.Add((Ǔ)=>ǟ.NextDouble()<float.
+Parse(Ǖ.Value));if(Ǖ.Key=="minSzSG")ǒ.ǡ.Add((Ǔ)=>{ɲ.ɧ($"Pred {Ǔ.ˡ} size {Ǔ.ˑ.Value.Extents.Length()}");return(Ǔ.ˡ!=
+MyDetectedEntityType.SmallGrid)||(Ǔ.ˑ.Value.Extents.Length()>int.Parse(Ǖ.Value));});if(Ǖ.Key=="minSzLG")ǒ.ǡ.Add((Ǔ)=>{ɲ.ɧ(
+$"Pred {Ǔ.ˡ} size {Ǔ.ˑ.Value.Extents.Length()}");return(Ǔ.ˡ!=MyDetectedEntityType.LargeGrid)||(Ǔ.ˑ.Value.Extents.Length()>int.Parse(Ǖ.Value));});}Ǥ.Add(ǒ);}public void
+ǔ(ˊ Ǔ){ɲ.ɫ("WeapBot: considering options");if(Ô%300==0){foreach(var ǒ in Ǥ){if(ǒ.ǣ(Ǔ)){ɲ.ɧ(
+$"Predicate passed. Running command '{ǒ.Ǣ}'");ľ.Ǣ.D(ǒ.Ǣ.Replace("{id}",Ǔ.ˌ.ToString()),ľ);}}}if(ǚ==0)ǚ=Ô;var Ö=(ľ.ə-Ǔ.ˍ.Value).Length();var Ǒ=Ř;if(ľ.Ԝ.Any()&&ľ.Ú.Ҟ(
+"wb-jab")){if(Ô>Ǜ){if(Ö<800){if(ľ.Ɯ.ˎ.Length()<400*Math.Sqrt(150/Ǒ)){if((Ö<Ǒ+400)&&(ľ.Ɯ.Ε.X<0.26)){ľ.Ơ.ъ(new օ(ľ,null,Ǔ,null));}
+}}}}}public void ǐ(){Ǜ=Ô+900;}public bool ǝ(float ǥ,long Ƿ,IMyShipMergeBlock ǳ=null){bool Ǵ=false;foreach(var Ì in ľ.Ԝ.
+Where(Ê=>(ǳ==null)||(Ê==ǳ))){var ǵ=ӫ<IMyShipMergeBlock>(Ì);if(ǵ!=null){Ǵ=true;var Ƕ=ӫ<IMyTimerBlock>(ǵ);if(Ƕ!=null){Ƕ.
+TriggerDelay=ǥ;Ƕ.StartCountdown();}ǵ.ApplyAction("OnOff_Off");ɲ.ɧ($"torp away");var Ó=ľ.Ԧ.FirstOrDefault(Ê=>Ê.Փ==ǵ&&!Ê.ӟ);if(Ó!=null
+){ľ.Է(Ó,Ƿ,true);}}}return Ǵ;}public void ü(){foreach(var Ų in Š){Ų.ü();}}public RayD Ǹ(){var Ǳ=Ş?.å();if(Ǳ.HasValue){ɲ.ɫ(
+$"{Ş.Ċ().ż} FwOverride {(Ǳ.Value-ľ.ə).Length():f3}m");return new RayD(Ǳ.Value,Ş.æ());}return new RayD();}public Vector3D ǹ(Vector3D ų,Vector3D ǭ,Vector3D Ǭ,Vector3D ǫ){if(Ş
+!=null){var ǲ=Ş.Ċ();if(ǲ!=null){var Ǳ=Ş.å();if(Ǳ!=null){var ſ=ǰ(ǲ,Ǳ.Value,ų,ǭ,Ǭ,ǫ);return ſ;}}}return ų;}Vector3D ǰ(ŭ ǯ,
+Vector3D Ǯ,Vector3D ų,Vector3D ǭ,Vector3D Ǭ,Vector3D ǫ){Vector3D Ǫ=ų-Ǯ;if((ǯ==null)||(ǭ.LengthSquared()<double.Epsilon)&&(Ǭ.
+Length()<double.Epsilon))return ų;switch(ǯ.ũ){case ƙ.Ƅ:case ƙ.Ɨ:var ǩ=И.λ(Ǯ,Ǭ,ų,ǭ,ǯ.Ū,true);if(!ǫ.IsZero()){var ǥ=Vector3D.
+Distance(Ǯ,ǩ)/ǯ.Ū;ǩ-=ǫ*ǥ*ǥ/2f;}return ǩ;case ƙ.Ɩ:Vector3D Ǩ=Vector3D.Normalize(Ǫ)*100;Vector3D ǧ=Ǩ+Ǭ;double Ǧ=Vector3D.Dot(
+Vector3D.Normalize(Ǫ),ǧ);Ǧ=Math.Min(Ǧ,200);var Ǐ=(200-Ǧ)*(200-Ǧ)/(2*600);var ǎ=Vector3D.Normalize(Ǫ)*(Ǐ*(200+Ǧ)/2+(Ǫ.Length()-Ǐ)
+*200)/Ǫ.Length();return И.λ(Ǯ,Ǭ,ų,ǭ,ǎ,true);case ƙ.ƕ:return ų;default:return ų;}}}class Ʀ{public float Ū{get;private set;
+}public float ū{get;private set;}public float Ư{get;private set;}public string ư{get;private set;}public bool Ƨ{get;
+private set;}public IMyBlockGroup Ʊ{get;private set;}public float Ʋ{get;private set;}public ƙ ƙ{get;private set;}public int Ƴ{
+get;private set;}public Ʀ(IMyBlockGroup ƴ,ƙ Ƶ){Ʊ=ƴ;var ƶ=ƴ.Name.Split('[').Select(Ê=>Ê.Trim(']')).ToArray();var Ʒ=ƶ.Skip(1)
+.FirstOrDefault(Ê=>Ê.Contains("v="));var Ű=ƶ.Skip(1).FirstOrDefault(Ê=>Ê.Contains("r="));var Ʈ=ƶ.Skip(1).FirstOrDefault(Ê
+=>Ê.Contains("d="));var ƭ=ƶ.Skip(1).FirstOrDefault(Ê=>Ê.Contains("fwO="));if(Ʒ==null||Ű==null){var Ą=$"Custom group '{ƴ.Name}' definition failure. Expected v and r tags, e.g. 'heavy dakka [hd-coax][ripple][v=500][r=1000][d=5]'"
+;ɲ.ɧ(Ą);throw new Exception(Ą);}if(Ʈ!=null)Ư=float.Parse(Ʈ.Split('=')[1]);else Ư=5;if(ƭ!=null)Ʋ=float.Parse(ƭ.Split('=')[
+1]);ū=float.Parse(Ű.Split('=')[1]);Ū=float.Parse(Ʒ.Split('=')[1]);Ƴ=120;ƙ=Ƶ;Ƨ=ƶ.Any(Ê=>Ê=="ripple");ư=ƶ[0];}}class Ƭ{
+public IMyTerminalBlock ƫ;public Vector3D ƪ;public List<IMyUserControllableGun>Ʃ=new List<IMyUserControllableGun>();public
+string ƨ;public ŭ ŭ;public bool Ƨ;public float Ư;public int Ƹ;public int ǉ;public int ǃ=240;public Action Ǆ;public Action ǅ;}
+class ǆ{IMyCubeGrid Ǉ;Ӡ ľ;public bool ǈ{get;private set;}public List<Ƭ>Ǌ;public Vector3D Ǎ{get;private set;}public ǆ(List<
+IMyUserControllableGun>Ŗ,List<Ʀ>ǋ,LinkedList<ŭ>ì,IMyCubeGrid ǌ,Vector3D Ů,Ӡ B){ľ=B;Ǌ=new List<Ƭ>();foreach(var Þ in Ŗ){var î=Þ.BlockDefinition
+.TypeId.ToString()+"/"+Þ.BlockDefinition.SubtypeName;if(!Ǌ.Any(Ê=>Ê.ƨ==î)){if(î.Contains(
+"MyObjectBuilder_SmallGatlingGun"))í(î,"Light ballistic",400f,800f,5,60,ƙ.Ɨ,ì);else if(î.Contains("SmallBlockMediumCalibreGun")){í(î,"Heavy ballistic S",
+500f,1400f,2,400,ƙ.Ɨ,ì).Ƨ=true;}else if(î.Contains("LargeBlockLargeCalibreGun")){í(î,"Heavy ballistic L",500f,2000f,2,720,ƙ.
+Ɨ,ì).Ƨ=true;}else if(î.Contains("SmallRailgun")){í(î,"Rail S",1000f,1400f,2,260,ƙ.Ɨ,ì).Ƨ=true;}else if(î.Contains(
+"LargeRailgun")){í(î,"Rail L",2000f,2000f,2,260,ƙ.Ɨ,ì).Ƨ=true;}else if((î=="MyObjectBuilder_SmallMissileLauncher/")||î.Contains(
+"/LargeMissileLauncher")||î.Contains("/SmallRocketLauncherReload")){í(î,"Rocket",200f,800f,10,180,ƙ.Ɩ,ì).Ƨ=true;}}var ǂ=Ǌ.FirstOrDefault(Ê=>Ê.ƨ
+==î);if(ǂ!=null)ǂ.Ʃ.Add(Þ);else ɲ.ɧ($"Failed to parse weapon subtype: {î}, custom name: {Þ.CustomName}");}foreach(var ƴ in
+ǋ){var ǁ=new List<IMyUserControllableGun>();ƴ.Ʊ.GetBlocksOfType(ǁ);var ǀ=í(ƴ,ì);ǀ.Ʃ.AddRange(ǁ);ǀ.Ƨ=ƴ.Ƨ;ɲ.ɧ(
+$"Added custom weapon group '{ƴ.ư}', gun count: {ǁ.Count}, ripple: {ǀ.Ƨ}");List<IMyTimerBlock>ƿ=new List<IMyTimerBlock>();ƴ.Ʊ.GetBlocksOfType(ƿ);IMyTimerBlock ƾ=null;IMyTimerBlock ƽ=null;
+IMyTimerBlock Ƽ=null;foreach(var Ã in ƿ){var ƻ=ϩ(Ã);if(ƻ.Contains("ref"))ƾ=Ã;if(ƻ.Contains("fire"))ƽ=Ã;if(ƻ.Contains("cease"))Ƽ=Ã;}ƾ=
+ƾ??ƿ.FirstOrDefault();if(ƾ!=null){ǀ.Ǆ=()=>{if(ƽ!=null)Ϫ(ƽ);else ƾ.Enabled=true;};ǀ.ǅ=()=>{if(Ƽ!=null)Ϫ(Ƽ);else ƾ.Enabled=
+false;};ǀ.ƫ=ƾ;var ƺ=ƾ.GetPosition()+ƾ.WorldMatrix.Forward*ƴ.Ʋ-ǌ.WorldMatrix.Translation;ǀ.ƪ=Vector3D.TransformNormal(ƺ,
+MatrixD.Transpose(ǌ.WorldMatrix));ɲ.ɧ("Added custom trigger");}}Vector3D ƹ;foreach(var è in Ǌ){ƹ=Vector3D.Zero;if(è.Ʃ.Count>0){
+ƹ=Vector3D.Zero;è.Ʃ.ForEach(Ê=>ƹ+=Ê.GetPosition());ƹ=ƹ/è.Ʃ.Count();è.ƫ=è.Ʃ.OrderBy(Ê=>(ƹ-Ê.GetPosition()).Length()).First
+();è.ƪ=Vector3D.TransformNormal(ƹ-ǌ.WorldMatrix.Translation,MatrixD.Transpose(ǌ.WorldMatrix));}ɲ.ɧ(
+$"Group {è.ŭ.ż}: {è.Ʃ.Count}");}Ǉ=ǌ;Ǎ=Ů;ǈ=true;}Ƭ í(Ʀ ë,LinkedList<ŭ>ì){return í(ë.Ʊ.Name,ë.ư,ë.Ū,ë.ū,ë.Ư,ë.Ƴ,ë.ƙ,ì);}Ƭ í(string î,string Z,float ï,
+float ñ,float ð,int ò,ƙ ó,LinkedList<ŭ>ì){var ô=ì.FirstOrDefault(Ê=>Ê.ż==Z);if(ô==null){ô=new ŭ(ó,ñ,ï,Z);ì.AddLast(ô);}ɲ.ɧ(
+"added "+î);var õ=new Ƭ(){ƨ=î,ŭ=ô,ǃ=ò,Ư=ð};Ǌ.Add(õ);return õ;}public void ö(){ǈ=true;é();}public void é(){if(ǈ){foreach(var è in
+Ǌ){è.Ʃ.ForEach(Ê=>Ê.Shoot=false);è.ǅ?.Invoke();}ǈ=false;}}public Ƭ ç(){if(ĉ!=null)return Ǌ.Where(Ê=>Ê.ŭ==ĉ).
+FirstOrDefault();return null;}public Vector3D æ(){return ç().ƫ?.WorldMatrix.Forward??Vector3D.Zero;}public Vector3D?å(){if(ĉ!=null)
+foreach(var ä in Ǌ.Where(Ê=>Ê.ŭ==ĉ)){if(!ľ.Ú.Ҟ("coax-ripple")||!ä.Ƨ)return Vector3D.TransformNormal(ä.ƪ,Ǉ.WorldMatrix)+Ǉ.
+WorldMatrix.Translation;else{var ã=ä.Ʃ[ä.Ƹ];if(ã.IsWorking)return ã.WorldMatrix.Translation;else{þ(ä);return null;}}}return null;}
+public float â;public double á;double à;bool ß(IMyTerminalBlock Þ,Vector3D Ý,float ð,bool ø){var ć=ľ.Ӟ.Get<float>(
+"wb-precision-override");if(ć>0)ð=ć;var Ă=Vector3D.Dot(Vector3D.Normalize(Ý-Þ.GetPosition()),Þ.WorldMatrix.Forward);Ă=Math.Min(Ă,1f);var ă=Math
+.Acos(Ă);var Ö=(Þ.GetPosition()-Ý).Length();var Ą=Math.Tan(ă)*Math.Max(100,Ö);var ą=Math.Abs(Ą-à);à=Ą;â=ð;á=Math.Tan(ă)*Ö
+;return(Ö<ĉ.ū)&&(ă<Math.PI/4f)&&(á<ð)&&(!ø||ą<0.5f);}public void Ć(Vector3D Ý){if(ĉ!=null)foreach(var ä in Ǌ.Where(Ê=>Ê.ŭ
+==ĉ)){if(ľ.Ú.Ҟ("coax-ripple")&&ä.Ƨ){var Ĉ=ä.Ʃ[ä.Ƹ];if(ß(Ĉ,Ý,ä.Ư,true)){if(!Ĉ.IsWorking)þ(ä);else{if(!ǈ){Ĉ.Shoot=true;ǈ=
+true;if(ä.ǉ==0)ä.ǉ=Ô;}ý=true;}}}else{if(ß(ä.ƫ,Ý,ä.Ư,false)){if(!ǈ){ä.Ʃ.ForEach(Ê=>Ê.Shoot=true);ä.Ǆ?.Invoke();ǈ=true;}ý=true
+;}}}}ŭ ĉ;public ŭ Ċ(){return ĉ;}ŭ ċ;int Č;int č;public void ā(ŭ Ā){ċ=Ā;Č=Ô;}public Action<Ƭ>ÿ;void þ(Ƭ ä){ä.Ƹ++;ä.ǉ=0;ǈ=
+false;if(ä.Ƹ>ä.Ʃ.Count-1)ä.Ƹ=0;ÿ?.Invoke(ä);}bool ý;public void ü(){if((ċ!=null)&&(ċ!=ĉ)){if(Ǌ.Any(Ê=>Ê.ŭ==ċ)){ĉ=ċ;č=Ǌ.First(
+Ê=>Ê.ŭ==ċ).ǃ;č=300;ǈ=true;é();}else ĉ=null;ċ=null;}foreach(var ä in Ǌ.Where(Ê=>Ê.ǉ>0)){if(Ô-ä.ǉ>(ä.ŭ.ż.Contains("Rail")?
+180:ľ.Ӟ.Get<int>("ripple-increment-interval"))){þ(ä);}}if(!ý)é();ý=false;}}void û(){ʄ.ʘ.Clear();Save();ù();}
+IMyGridTerminalSystem ú;void ù(){Ԁ=new ӿ(IGC);ɲ.ɧ($"IGC id: {IGC.Me}");Ô=0;ʄ=new ʌ((Å)=>Storage=Å);ʄ.ʗ(Storage);ɖ=new ɗ();ӡ=new Ӡ(Me,ʄ,ú,IGC,
+Ԁ,ɖ,W);ǿ=ӡ.ǿ;ӡ.ӝ.ForEach(Ê=>ӡ.ի(Ê));if(ӡ.Օ.Any())ŀ=new Ŀ(ӡ,ʄ,ú);IsLargeGrid=ӡ.ե.CubeGrid.GridSizeEnum==MyCubeSize.Large;
+if(ӡ.Ռ!=null)IGC.SendUnicastMessage(ӡ.Ռ.EntityId,"tgp.subscribe-me",IGC.Me);if(!string.IsNullOrEmpty(Me.CustomData)||!
+string.IsNullOrEmpty(Storage))Â=true;}void Save(){ʄ.ʑ();}bool Û;bool Â;static int Ô;class Á{Dictionary<string,IMyTimerBlock>µ=
+new Dictionary<string,IMyTimerBlock>();List<IMyTimerBlock>À;public List<IMyTimerBlock>º=>À;public Á(List<IMyTimerBlock>µ){À
+=µ;}public bool ª(string Z){IMyTimerBlock Y;if(!µ.TryGetValue(Z,out Y)){Y=À.FirstOrDefault(X=>X.CustomName.Contains(Z));
+if(Y!=null)µ.Add(Z,Y);else return false;}Ϫ(Y);return true;}}V W;class V{Dictionary<string,Action<string[],Ӡ>>S;
+IMyIntergridCommunicationSystem R;public V(IMyIntergridCommunicationSystem Q,Dictionary<string,Action<string[],Ӡ>>P){S=P;R=Q;}public void O(string J,
+string[]N,Ӡ B){S[J].Invoke(N,B);}public void M(string K,long J=0){if(J!=0)I(K,J);else I(K);}void I(string H,params long[]F){Õ(
+"apck.command",H,F);}public void D(string C,Ӡ B){ɲ.ɧ($"Got apck cmd: {C}");C=C.Replace("{me}",B.է.Me.ToString());C=C.Replace(
+":{static-pt}",B.Ơ.Ҳ.HasValue?$":{Џ(B.Ơ.Ҳ.Value)}":"");var N=C.Split(new[]{':'},StringSplitOptions.RemoveEmptyEntries);var A=N[0];if(A
+.StartsWith("<")){var Ã=A.Trim('<','>');if(!B.Ԡ.Contains(Ã))return;else N=N.Skip(1).ToArray();}A=N[0];if(A=="toggle"){var
+Ï=N[1];if(N.Length>2)B.Ú.ҡ(Ï,bool.Parse(N[2]));else B.Ú.ҟ(Ï);B.Ú.қ(Ï,B);return;}if(A=="command"){O(N[1],N,B);return;}int?
+Q=null;string Ð=null;if(A.Contains("]")){Q=int.Parse(A.Split('[').Select(Ñ=>Ñ.Trim(']')).Skip(1).First());A=A.Split('[').
+First();}if(A.Contains(">")){Ð=A.Split('<').Select(Ñ=>Ñ.Trim('>')).Skip(1).First();A=A.Split('<').First();}var Ò=string.Join(
+":",N.Skip(1).ToArray());if(Ð!=null)Ò=$"<{Ð}>:{Ò}";if(A=="bc")I(Ò);if(A=="w"){if(Q.HasValue&&(B.ǿ.ǻ.Count>Q))I(Ò,B.ǿ.ǻ.
+ElementAt(Q.Value));else I(Ò,B.ǿ.ǻ.ToArray());}if(A=="su"){if(Q.HasValue&&(B.Ԧ.Count>Q))O(N[2],N.Skip(1).ToArray(),B.Ԧ[Q.Value]);
+else foreach(var Ó in B.Ԧ)O(N[2],N.Skip(1).ToArray(),Ó);}if(A=="p"&&(B.ǿ.ǽ!=0))I(Ò,B.ǿ.ǽ);}public void Õ<Ú>(string Ð,Ú Ö,
+params long[]F){if(!F.Any()){Б.З++;R.SendBroadcastMessage(Ð,Ö);}else{foreach(var J in F){Б.З++;R.SendUnicastMessage(J,Ð,Ö);}}}
+}List<ʅ>Ø=new List<ʅ>();List<MyIGCMessage>Ù=new List<MyIGCMessage>();void Main(string Î){if(!Û){try{ɲ.ź(Echo,
+GridTerminalSystem,Me);ù();Û=true;Runtime.UpdateFrequency=UpdateFrequency.Update1;}catch(Exception ex){Runtime.UpdateFrequency=
+UpdateFrequency.None;Echo(ex.ToString());if(Î=="command:clear-state")Storage="";else if(Î=="command:clear-defs"){û();Runtime.
+UpdateFrequency=UpdateFrequency.Update1;}return;}}ɲ.ɣ?.Invoke();ɲ.շ?.Invoke(Ô+"");Ô++;Dt=Math.Max(0.001,Runtime.TimeSinceLastRun.
+TotalSeconds);ɲ.Ú+=Dt;if(DbgIgc>0)ɲ.ɫ("WARNING! DbgIgc");ɲ.ɫ($"AutoPillock Core v.{Ver}");ɲ.ɫ(
+$"Dockable: {ӡ.Ք!=null} Carrier: {ŀ!=null}\nDesignators: {ӡ.թ.Count}");ɲ.ɫ("Services found:");ɲ.ɫ($"TGP: {ӡ.Ռ!=null} TP: {ӡ.Վ!=null}");ɲ.ɫ($"TMC: {ӡ.Ջ!=null} Osvc: {ӡ.Ս!=null}");Ø.Clear();Ù
+.Clear();while(IGC.UnicastListener.HasPendingMessage){Ù.Add(IGC.UnicastListener.AcceptMessage());}try{Ԁ.Ӊ(Ù);}catch(
+Exception ex){ɲ.ɧ(ex.ToString());throw ex;}var Í=IGC.RegisterBroadcastListener("apck.command");while(Í.HasPendingMessage){var Ì=Í
+.AcceptMessage();Ø.AddRange(ʇ(Ì.Data.ToString(),Ì.Source).ToList());}foreach(var Ì in Ù){var Ë=Ì.Source;Б.Е++;if(Ì.Tag==
+"apck.command")Ø.AddRange(ʇ(Ì.Data.ToString(),Ë).ToList());else{if(Ì.Tag=="apck-handshake-reply"){if((string)Ì.Data=="TGP")ӡ.Ռ=ӡ.Պ.
+First(Ê=>Ê.EntityId==Ì.Source);if((string)Ì.Data=="TP"){ӡ.Վ=ӡ.Պ.First(Ê=>Ê.EntityId==Ì.Source);ӡ.Վ.TryRun(
+$"command:set-mode:{ӡ.Ɯ.Ĥ}");}if((string)Ì.Data=="OutputSvc")ӡ.Ս=ӡ.Պ.First(Ê=>Ê.EntityId==Ì.Source);if((string)Ì.Data=="TMC")ӡ.Ջ=ӡ.Պ.First(Ê=>Ê.
+EntityId==Ì.Source);}if(Ì.Tag=="apck.tac.addchild"){ǿ.ǻ.Add(Ë);}else if(Ì.Tag=="tp.force-report"){ӡ.Ɯ.Ͳ=(Vector3D)Ì.Data;}else
+if(Ì.Tag=="apck.dpath.complete"){ŀ.Ō(Ì.Source);}else if(Ì.Tag=="apck.dpath.add:node"){ŀ?.ı((MatrixD)Ì.Data);}else if(Ì.Tag
+=="apck.dpath.add:entry"){ŀ?.ı((MatrixD)Ì.Data,true);}else if(Ì.Tag=="apck.docking.request"){ŀ?.ĵ(Ë,(Vector3D)Ì.Data);}
+else if(Ì.Tag.Contains("dpath.exec")){var É=Ì.Tag.Contains("depart");var È=Ԁ.ԙ(Ì.Source);var Ç=Ԁ.ԕ("docking");var Æ=(
+ImmutableArray<Vector3D>)Ì.Data;ӡ.Ơ.ъ(new տ(ӡ,È,Ç,Æ.Reverse().ToList(),É,Ì.Source));}}}ǿ.Ķ(Ô);ŀ?.Ķ(IGC,Ô);if(Â&&string.IsNullOrEmpty(Î
+)){Â=false;var S=Me.CustomData.Trim('\n').Split(new[]{'\n'},StringSplitOptions.RemoveEmptyEntries).Where(Å=>!Å.StartsWith
+("//")).Select(Å=>"["+Å+"]").ToList();Î=string.Join(",",S);}if(!string.IsNullOrEmpty(Î)&&Î.Contains(":")){Б.Е++;Ø.
+AddRange(ʇ(Î,IGC.Me).ToList());}if(Ø.Any()){foreach(var Ü in Ø){ӡ.Ǣ.D(Ü.ʊ,ӡ);}}int Ä=1;if((Ô%Ä)==0){ǿ.ȓ();ɖ.ɋ(Ô);ӡ.Ķ(Ô,ɲ.ɫ);if(ӡ
+.Ɯ.ͻ!=Vector3D.Zero)Ň("agent-dest",ӡ.Ɯ.ͻ,"");if(ӡ.Ɯ.ͷ!=Vector3D.Zero)Ň("agent-aim",ӡ.Ɯ.ͷ,"");if(ӡ.Ɯ.Ͷ!=Vector3D.Zero)Ň(
+"agent-vel",ӡ.Ɯ.Ͷ,ӡ.Ɯ.Δ);}var Ď=ӡ.Ս;if((Ď!=null)&&IGC.IsEndpointReachable(Ď.EntityId)&&(Ď.Enabled)){var ł=Ď.EntityId;Echo(
+"Delegating output to "+Ď.EntityId);Ņ.AppendLine(ӡ.Ú.Ҟ("damp-when-idle")?"DMP":"INR");Ņ.AppendLine((ӡ.Ɯ.Ĥ!=0)&&(ӡ.Վ!=null)?"THR":"HC");Ŋ(ł,Ņ.
+ToString(),new Vector2(0f,3.8f/4),1f);Ņ.Clear();Ņ.AppendLine(ӡ.Ơ.Ъ==ResponseState.Attacking?"TURR REACT":"");Ŋ(ł,Ņ.ToString(),
+new Vector2(0f,1.15f),0.6f);Ņ.Clear();ň(ł);}else ň(DbgIgc);Ņ.AppendFormat("Processed in {0:f3} ms\n",Runtime.LastRunTimeMs)
+.AppendFormat("sentMsgCount: {0}\n",Б.З).AppendFormat("receivedCmdCount: {0}\n",Б.Е).AppendFormat(
+"ParseVectorsCount: {0}\n",Б.К).AppendFormat("TVextrapolationsCount: {0}\n",Б.Д).AppendFormat("TVInvalidationsCount: {0}\n",Б.Ж).AppendFormat(
+"TacNode.Parent: {0}\n",ǿ.ǽ).AppendFormat("TacNode.Children: {0}\n",ǿ.ǻ.Count());ɲ.ɫ(Ņ.ToString());Ņ.Clear();ɲ.ɤ();ń.Enqueue(Runtime.
+LastRunTimeMs);if(ń.Count==100){double Ń=0;foreach(var Ê in ń)Ń+=Ê;ɲ.ɫ("100 runs avg "+(Ń/100f).ToString("f3")+" ms");ń.Dequeue();}}
+Queue<double>ń=new Queue<double>();StringBuilder Ņ=new StringBuilder();List<MyTuple<string,Vector3D,ImmutableArray<string>>>ņ
+=new List<MyTuple<string,Vector3D,ImmutableArray<string>>>();void Ň(string Ð,Vector3D Ñ,params string[]Å){ņ.Add(new
+MyTuple<string,Vector3D,ImmutableArray<string>>(Ð,Ñ,Å.ToImmutableArray()));}void ň(long ŉ){IGC.SendUnicastMessage(ŉ,
+"hud.apck.proj",ņ.ToImmutableArray());ņ.Clear();}void Ŋ(long ŋ,string Ã,Vector2 Ñ,float Ł){IGC.SendUnicastMessage(ŋ,"draw-text",new
+MyTuple<string,Vector2,float>(Ã,Ñ,Ł));}Ŀ ŀ;class Ŀ{Ӡ ľ;Dictionary<IMyShipConnector,Vector3D>Ľ=new Dictionary<IMyShipConnector,
+Vector3D>();List<Ī>ļ;long?Ļ;IMyBroadcastListener ĺ;public Ŀ(Ӡ B,ʌ Ĺ,IMyGridTerminalSystem ú){ľ=B;ļ=Ĺ.ʓ;B.Օ.ForEach(Ê=>Ľ.Add(Ê,Ê.
+GetPosition()));ĺ=B.է.RegisterBroadcastListener("apck.depart.request");foreach(var ĸ in ļ){ɲ.ɧ($"node: {ĸ.Ĩ}");}}ˊ ķ=new ˊ(1,
+"docking",null);public void Ķ(IMyIntergridCommunicationSystem Q,int Ã){ɲ.ɫ("Navmesh: "+ļ.Count);while(ĺ.HasPendingMessage){var Ì=
+ĺ.AcceptMessage();var Ö=(MyTuple<long,Vector3D>)Ì.Data;if(ľ.Օ.Any(Ê=>Ê.EntityId==Ö.Item1))ĵ(Ì.Source,Ö.Item2,true);}if(
+DbgIgc>0){var ŏ=ļ.Count;int Ő=0;if(ŏ>1){var ő=new List<MyTuple<Vector3D,Vector3D,Vector4>>();foreach(var Œ in ļ){foreach(var Ê
+in Œ.ħ){ő.Add(new MyTuple<Vector3D,Vector3D,Vector4>(Vector3D.Transform(Œ.Ĩ,ľ.ե.WorldMatrix),Vector3D.Transform(Ê.Item1.Ĩ,
+ľ.ե.WorldMatrix),Color.SeaGreen.ToVector4()));Ő++;}}Q.SendUnicastMessage(DbgIgc,"draw-lines",ő.ToImmutableArray());}ɲ.ɫ(
+$"draw-lines: {Ő}");}ɲ.ɫ($"Dpath lock: {Ļ}");foreach(var Å in ė)ɲ.ɫ($"{Å} awaits docking");foreach(var Å in Ĝ)ɲ.ɫ($"{Å} awaits departure")
+;if(ė.Any()&&!Ļ.HasValue){var œ=ľ.Օ.FirstOrDefault(Ö=>(string.IsNullOrEmpty(Ö.CustomData)||(Ö.CustomData==ė.Peek().
+ToString()))&&(Ö.Status==MyShipConnectorStatus.Unconnected));if(œ!=null){var J=ė.Dequeue();œ.CustomData=J.ToString();ɲ.ɧ(
+$"{J} assigned to connector");var Ŕ=MatrixD.Transpose(œ.WorldMatrix);try{if(ļ.Any(Ê=>Ê.ĩ)){var ŋ=ě(Ė[J],œ).Select(Ê=>Ê.Ĩ).ToImmutableArray();foreach
+(var Ê in ŋ)ɲ.ɧ($"dpath.exec: {Ê}");ɲ.ɧ($"Sent {ŋ.Length}-node approach path");Q.SendUnicastMessage(J,
+"apck.dpath.exec.docking",ŋ);Ļ=J;}else Q.SendUnicastMessage(J,"apck.dpath.exec.docking",new List<Vector3D>(){ĕ(œ,20)}.ToImmutableArray());}catch(
+Exception ex){ɲ.ɧ(ex.ToString());throw ex;}}}if(Ĝ.Any()&&!Ļ.HasValue){var J=Ĝ.Peek();var Ŏ=ľ.Օ.FirstOrDefault(Ö=>Ö.CustomData==J.
+ToString());if(Ŏ!=null){Ĝ.Dequeue();if(ļ.Any(Ê=>Ê.ĩ)){var ŋ=Ĕ(Ŏ,Ė[J]).Select(Ê=>Ê.Ĩ).ToImmutableArray();ɲ.ɧ(
+$"Sent {ŋ.Length}-node departure path");Q.SendUnicastMessage(J,"apck.dpath.exec.depart",ŋ);Ļ=J;}else Q.SendUnicastMessage(J,"apck.dpath.exec.depart",new List<
+Vector3D>(){ĕ(Ŏ,20)}.ToImmutableArray());}}foreach(var Ö in ľ.Օ.Where(Ö=>!string.IsNullOrEmpty(Ö.CustomData))){long J;if(long.
+TryParse(Ö.CustomData,out J)){ɲ.ɫ($"Channeling DV to {J}");var Ì=Ö.WorldMatrix;var Ñ=Ì.Translation+Ì.Forward*(IsLargeGrid?1.25:
+0.5);if(Ľ[Ö]!=Vector3D.Zero){var Ê=(Ö.GetPosition()-Ľ[Ö]);ķ.ˎ=Ê/Dt;Ñ+=Ê;}Ľ[Ö]=Ö.GetPosition();ķ.ˈ(Ñ,Ã);ķ.ˬ=Ì;var Ï=ķ.Ѐ();Q.
+SendUnicastMessage(J,"apck.ntv.update",Ï);}}}public void ō(){if(Ļ.HasValue){Ō(Ļ.Value);}}public void Ō(long J){ɲ.ɧ($"{J} RouteComplete");
+if(Ļ.HasValue&&(Ļ.Value==J)){ľ.Օ.First(Ê=>Ê.CustomData==J.ToString()).CustomData="";Ļ=null;}}public void ĵ(long J,Vector3D
+Ö,bool É=false){ɲ.ɧ($"{J} requests {(É?"depart":"docking")}");if(É){if(!Ĝ.Contains(J))Ĝ.Enqueue(J);}else{if(!ė.Contains(J
+))ė.Enqueue(J);}Ė[J]=Ö;}Vector3D ĕ(IMyShipConnector Ö,float Ì){return Vector3D.Rotate(Ö.WorldMatrix.Translation+Ö.
+WorldMatrix.Forward*Ì-ľ.ե.WorldMatrix.Translation,MatrixD.Transpose(ľ.ե.WorldMatrix));}Dictionary<long,Vector3D>Ė=new Dictionary<
+long,Vector3D>();Queue<long>ė=new Queue<long>();Queue<long>Ĝ=new Queue<long>();IEnumerable<Ī>Ę(Dictionary<Ī,Ī>ę,Ī Ě){yield
+return Ě;var X=ę[Ě];while(X!=null){yield return X;X=ę[X];}}List<Ī>ě(Vector3D ē,IMyShipConnector Ö){var Ē=Vector3D.Rotate(ē-ľ.ե
+.WorldMatrix.Translation,MatrixD.Transpose(ľ.ե.WorldMatrix));var đ=Vector3D.Rotate(Ö.GetPosition()-ľ.ե.WorldMatrix.
+Translation,MatrixD.Transpose(ľ.ե.WorldMatrix));var Đ=ļ.Where(Ê=>Ê.ĩ).OrderBy(Ê=>(Ê.Ĩ-Ē).LengthSquared()).FirstOrDefault();var ď=ļ.
+OrderBy(Ê=>(Ê.Ĩ-đ).LengthSquared()).FirstOrDefault();return ĝ(Đ,ď);}List<Ī>Ĕ(IMyShipConnector Ö,Vector3D ē){var Ē=Vector3D.
+Rotate(Ö.GetPosition()-ľ.ե.WorldMatrix.Translation,MatrixD.Transpose(ľ.ե.WorldMatrix));var đ=Vector3D.Rotate(ē-ľ.ե.WorldMatrix
+.Translation,MatrixD.Transpose(ľ.ե.WorldMatrix));var Đ=ļ.OrderBy(Ê=>(Ê.Ĩ-Ē).LengthSquared()).FirstOrDefault();var ď=ļ.
+Where(Ê=>Ê.ĩ).OrderBy(Ê=>(Ê.Ĩ-đ).LengthSquared()).FirstOrDefault();return ĝ(Đ,ď);}List<Ī>ĝ(Ī Đ,Ī ď){var Ĭ=new HashSet<Ī>();Ĭ.
+Add(Đ);var ę=new Dictionary<Ī,Ī>();var ĭ=new Dictionary<Ī,double>();var Į=new Dictionary<Ī,double>();foreach(var Ě in ļ){Į.
+Add(Ě,double.MaxValue);ĭ.Add(Ě,double.MaxValue);ę.Add(Ě,null);}ĭ[Đ]=0;Į[Đ]=0;while(Ĭ.Count>0){var į=Ĭ.OrderBy(Ê=>Į[Ê]).
+FirstOrDefault();if(į==ď){return Ę(ę,į).ToList();}Ĭ.Remove(į);foreach(var Ě in į.ħ){var İ=ĭ[į]+Ě.Item2;if(İ<ĭ[Ě.Item1]){ę[Ě.Item1]=į;ĭ
+[Ě.Item1]=İ;Į[Ě.Item1]=İ;if(!Ĭ.Contains(Ě.Item1)){Ĭ.Add(Ě.Item1);}}}}ɲ.ɧ($"Failure");return null;}internal void ı(MatrixD
+Ĳ,bool ĳ=false){try{var Ě=new Ī(){Ĩ=Vector3D.Rotate(Ĳ.Translation-ľ.ե.GetPosition(),MatrixD.Transpose(ľ.ե.WorldMatrix)),ĩ
+=ĳ};var Ĵ=ļ.Where(Ê=>Ê.ĩ).OrderBy(Ê=>(Ê.Ĩ-Ě.Ĩ).LengthSquared()).FirstOrDefault();if(Ĵ==null)Ĵ=ļ.OrderBy(Ê=>(Ê.Ĩ-Ě.Ĩ).
+LengthSquared()).FirstOrDefault();if(Ĵ!=null){Ĵ.ħ.Add(new MyTuple<Ī,double>(Ě,(Ě.Ĩ-Ĵ.Ĩ).Length()));Ě.ħ.Add(new MyTuple<Ī,double>(Ĵ,(Ě
+.Ĩ-Ĵ.Ĩ).Length()));}ļ.Add(Ě);}catch(Exception ex){ɲ.ɧ(ex.ToString());}}internal void ī(){ļ.Clear();}}class Ī{public bool
+ĩ;public Vector3D Ĩ;public HashSet<MyTuple<Ī,double>>ħ=new HashSet<MyTuple<Ī,double>>();}class Ħ{PState ĥ;public
+ThrustDelegation Ĥ;public bool ģ;public void Ģ(PState ġ){if(ġ==PState.WP)ê();else if(ġ==PState.Inert)Ǻ(false);else if(ġ==PState.Disabled
+)Ǻ();ĥ=ġ;}public void Ġ(string ğ){ThrustDelegation Ö;if(Enum.TryParse(ğ,out Ö)){Ĥ=Ö;if(B.Վ!=null)B.Վ.TryRun(
+$"command:set-mode:{Ö}");}}void ê(){Ί.DampenersOverride=false;}void Ǻ(bool ȩ=true){ͽ.GyroOverride=false;Έ().ȝ();Ί.DampenersOverride=ȩ;}public Ħ
+(IMyRemoteControl Ύ,IMyIntergridCommunicationSystem R,IMyGyro Ώ,Func<Ȩ>ΐ,Ӡ Α){Ί=Ύ;ǫ=Ί.GetNaturalGravity();Ή=R;ͽ=Ώ;B=Α;Έ=ΐ
+;Ό=ΐ().Ʌ(1);ɲ.ɧ($"Total thrust force BB: {Ό}, vol: {Ό.Volume}");ģ=Ό.Volume>0;ɲ.ɧ($"Thrust3d: {ģ}");}Vector3D Β;public
+string Δ;public Vector3D Ι{get;private set;}public Vector3D Ε{get;private set;}public double Ζ{get;private set;}public
+Vector3D ˎ{get{return Ί.GetShipVelocities().LinearVelocity;}}Vector3D?ǫ;public Vector3D?Η{get{return(ǫ!=Vector3D.Zero)?ǫ:null;}}
+Vector3D Θ{get;set;}public Vector3D Κ{get;set;}public BoundingBoxD Ό;public IMyRemoteControl Ί;IMyIntergridCommunicationSystem Ή
+;Func<Ȩ>Έ;Ӡ B;int Ά;IMyGyro ͽ;public IMyTerminalBlock ͼ{get{return ͽ;}}public Vector3D ͻ;public Vector3D ͺ;public
+Vector3D ͷ;public Vector3D Ͷ;bool ʹ;bool ͳ;public Vector3D Ͳ;public void ͱ(int Γ,Action<string>ɵ,ӭ Ɔ){var Ω=Γ-Ά;Ά=Γ;if(Ω>0)Κ=(ˎ-
+Θ)*60f/Ω;Θ=ˎ;ǫ=Ί.GetNaturalGravity();Ͷ=Vector3D.Zero;switch(ĥ){case PState.Disabled:return;case PState.WP:try{var Ϊ=Ɔ;if(
+Ϊ==null){Ģ(PState.Disabled);return;}if(!ģ&&!Ϊ.Ӳ&&(Ĥ==ThrustDelegation.None))return;if(Ϊ.Ӥ.HasValue){var Ϋ=(Ϊ.Ӵ!=null)?Ϊ.Ӵ
+():ͼ.GetPosition();bool ά=!B.Ú.Ҟ("suppress-gyro-control")&&B.Ӟ.Get<bool>("hold-thrust-on-rotation");if((ά&&(Β.Length()>1)
+)||B.Ú.Ҟ("suppress-transition-control")){ΰ(Ϋ,Ϋ,null,null,false);}else{ΰ(Ϋ,Ϊ.Ӥ.Value,Ϊ.ӥ?.ˎ,Ϊ.Ӷ,Ϊ.Ӫ);}}else{var Ñ=ͼ.
+GetPosition();if(B.Ú.Ҟ("damp-when-idle"))ΰ(Ñ,Ñ,null,0,false);else ΰ(Ñ,Ñ,null,null,false);}if(Ĥ==ThrustDelegation.Rover)Ϊ.ͷ=null;if(
+Ϊ.ͷ.HasValue){ͷ=Ϊ.ͷ.Value;var έ=Ϊ.Ӣ??ͼ.WorldMatrix;if(!ģ&&(ͺ!=ͼ.WorldMatrix.Translation)&&(Ĥ==ThrustDelegation.None))ͷ=ͺ;
+var ή=Vector3D.Zero;var Ǔ=ͷ-έ.Translation;var γ=Vector3D.TransformNormal(Ί.GetShipVelocities().AngularVelocity,MatrixD.
+Transpose(ͼ.WorldMatrix));var ί=Vector3D.Zero;if(Ǔ!=Vector3D.Zero){if(Ϊ.Ӧ?.ˍ.HasValue==true)ί=Vector3D.TransformNormal(ʝ(Ǔ,1f/60f
+),MatrixD.Transpose(ͼ.WorldMatrix));Ǔ=Vector3D.Normalize(Ǔ);ή=И.ϧ(Ǔ,έ,ͼ.WorldMatrix,Ϊ.ӣ,B.Ӟ.Get<float>(
+"roll-power-factor"));Ε=new Vector3D(Math.Abs(ή.X),Math.Abs(ή.Y),Math.Abs(ή.Z));Ι=Ε-Β;Β=Ε;Ζ=Vector3D.Dot(Ǔ,έ.Forward);}ʹ=!B.Ú.Ҟ(
+"suppress-gyro-control");if(ʹ)И.ȷ(ͽ,ή,γ,ί);}else{ʹ=false;}if(ͳ!=ʹ){ͽ.GyroOverride=ʹ;}ͳ=ʹ;}catch(Exception ex){if(B.դ!=null)B.դ.CustomName+=
+"HC Exception! See PB screen log";var Ű=Ί;var Ƈ=$"HC EPIC FAIL\nBehavior:{Ɔ.ư}\n{ex}";Ƈ+="\nacc caps: "+string.Join(",",Έ().Ƞ);ɲ.ɧ(Ƈ);Ģ(PState.Disabled);
+ɲ.ɤ();throw ex;}break;}}void ΰ(Vector3D α,Vector3D β,Vector3D?ǭ,float?Ψ,bool Χ){ͺ=β;if(ĥ!=PState.WP)return;if(Ĥ!=
+ThrustDelegation.None){if(B.Վ!=null){if(Ή.IsEndpointReachable(B.Վ.EntityId)){var Ö=β;var ƅ=α;ɲ.ɫ("Thrust delegation");var Φ=(Ĥ==
+ThrustDelegation.Vtol)&&B.Ú.Ҟ("vtol-hybrid");var Υ=Ψ.HasValue?Ψ.Value:-1;if(Φ&&(ˎ.LengthSquared()<1))Υ=-1;Ή.SendUnicastMessage(B.Վ.
+EntityId,"thrust",ImmutableArray.Create(Ö.X,Ö.Y,Ö.Z,ƅ.X,ƅ.Y,ƅ.Z,Χ?1d:0d,Υ));if(!Φ)return;}else{throw new Exception(
+"VTOL: a-thrust-provider is not reachable");}}}var Τ=β;var Σ=ͽ.WorldMatrix;Σ.Translation=α;var Ǫ=β-Σ.Translation;var Ρ=Vector3D.Normalize(Ǫ);var Π=MatrixD.
+Transpose(Σ);var Ο=Vector3D.TransformNormal(ˎ,Π);var Ξ=Ο;float ȶ=Ί.CalculateShipMass().PhysicalMass;if(!ģ){var Ν=new Vector3D();
+Vector3D Μ=Vector3D.Zero;var Λ=Έ().Ƚ().Ȋ()/Ί.CalculateShipMass().PhysicalMass;var ˮ=Λ;if(Η!=null){Ν+=Η.Value;ˮ=(float)Math.Sqrt(
+Math.Max(0,Λ*Λ-Math.Pow(Ν.Length(),2)));}if(Ǫ!=Vector3D.Zero){var ʷ=ˎ-(ǭ??Vector3D.Zero);if(ʷ!=Vector3D.Zero){if(!Χ&&(Math.
+Pow(Vector3D.Dot(ʷ,Ρ),2)/ˮ>Ǫ.Length())){ɲ.ɫ("Dampening");Μ=Vector3D.Normalize(ʷ)*Math.Min(Vector3D.Dot(ʷ,Ρ),ˮ);}else{
+Vector3D ˏ=Vector3D.Reject(ʷ,Ρ);var ʵ=(MAX_SP-(float)Vector3D.Dot(Ρ,ʷ))/MAX_SP;Μ=(-Ρ*ʵ+Vector3D.Normalize(ˏ)*Math.Min(1,ˏ.Length
+()/50))*ˮ;}}else Μ=-Ρ;Ν+=Μ;}var ʴ=Math.Max(0,(float)Vector3D.Dot(Σ.Forward,-Vector3D.Normalize(Ν)));var ȱ=0d;if(ʴ>0){ȱ=Ν.
+Length()/Λ*ʴ;}Έ().Ƚ().Ȃ(ȱ);ͺ=α-Ν;return;}BoundingBoxD ʳ=Έ().Ʌ(ȶ);if(ʳ.Volume==0||(ȶ==0))return;Vector3D ʲ=Vector3D.Zero;if(Η!=
+null){ʲ=Vector3D.TransformNormal(Η.Value,Π);ʳ+=ʲ;}var ʱ=Vector3D.Zero;var ʰ=Vector3D.Zero;var ʯ=Vector3D.Zero;var ʮ=Vector3D
+.Zero;var ʭ=Vector3D.Zero;var ʬ=new Vector3D();var ʫ=B.ӷ.ɺ(ref Σ)*1000;Vector3D ʪ=Vector3D.Zero;if(Ĥ==ThrustDelegation.
+Vtol){ʪ=Vector3D.TransformNormal(Ͳ,Π)/ȶ;ɲ.ɫ($"localExtA: {ʪ.ToString("f2")}");ʳ=ʳ.Include(ʪ);}var ʩ=Ǫ.Length();if(ʩ>double.
+Epsilon){Vector3D ʶ=Vector3D.TransformNormal(Ǫ,Π);var ʨ=new RayD(Vector3D.Zero,Vector3D.Normalize(ʶ));double ʧ,ʦ;if(!ʳ.
+Intersect(ref ʨ,out ʧ,out ʦ))throw new InvalidOperationException(
+"Not enough thrust to compensate for gravity - zero is outide of acc BB");ʭ=ʨ.Direction*ʧ;ʮ=ʨ.Direction*ʦ;var ʥ=ʮ.Length();ʯ=Vector3D.Reject(Ο,Vector3D.Normalize(ʶ));if(ǭ.HasValue){var ʤ=
+Vector3D.TransformNormal(ǭ.Value,Π);Ξ=Ο-ʤ;ʯ=Vector3D.Reject(Ξ,Vector3D.Normalize(ʶ));}else{Ξ-=ʯ;}var ʣ=Vector3D.Dot(Ξ,Vector3D.
+Normalize(ʶ));bool ʢ=ʣ>0;bool ʡ=true;var ʠ=Math.Pow(Math.Max(0,ʣ),2)/(2*ʥ*StoppingPowerQuotient);if(DbgIgc!=0){Δ=
+$"\nSTP: {ʠ:f2}\nRelSP: {ʣ:f2}";}if(ʢ){if(ʠ>ʩ)ʡ=false;else ʯ/=Dt;}if(Χ||ʡ){if(Ψ.HasValue&&(Vector3D.Dot(Ρ,ˎ)>=Ψ)){ʬ=ʮ;ʬ*=(ʣ-Ψ.Value)/ʥ;}else ʬ=ʭ;}else{
+ʬ=ʮ;}if(ʡ){var ʟ=Vector3D.Dot(Ρ,ˎ);if(ʟ>MAX_SP-0.001){ʬ=Vector3D.Zero;}if(SmoothPointBlankAcceleration&&(Ǫ.LengthSquared(
+)<ʭ.LengthSquared()))ʬ=-ʶ;}ʰ=ʬ;ʱ=ʯ;if(ʯ.IsValid())ʬ+=ʯ;}else if(Ψ.HasValue&&(Ψ==0)){var Ã=1/Dt;if(Ο.LengthSquared()<
+DampeningCutoffSquared)Ã=ʳ.Extents.Max()*DampeningCutoffFactor;if(ʫ!=Vector3D.Zero)ʬ+=Vector3D.Reject(Ο,Vector3D.Normalize(ʫ))*Ã;else ʬ+=Ο*Ã;}
+if(Η!=null){ʬ+=ʲ;}if(ʪ!=Vector3D.Zero){ʬ+=ʪ;}if(B.ԣ==null)ʬ-=ʫ;if(ʬ!=Vector3D.Zero){ͺ=Vector3D.TransformNormal(ʬ,Σ)+α;}try
+{ʬ.Y*=-1;Έ().ȷ(ʬ,ȶ);}catch{ɲ.ɧ("SetOverride failure");ɲ.ɧ($"reject{ʯ}");ɲ.ɧ($"Dt{Dt:f5}");ɲ.ɧ($"reject/Dt{ʯ/Dt}");ɲ.ɧ(
+$"reversePoint{ʮ}");ɲ.ɧ($"point{ʭ}");ɲ.ɧ($"overrideVector: {ʬ}, mass: {ȶ}, accCap: {ʳ}");throw;}}Vector3D?ʞ;Vector3D ʝ(Vector3D Ǔ,double ʜ
+){var Ĉ=Vector3D.Zero;if(ʞ.HasValue){Ĉ=Vector3D.Cross(Ǔ,Ǔ-ʞ.Value)/Ǔ.LengthSquared()*60;}ʞ=Ǔ;return Ĉ;}public Vector3D ʛ(
+double ʸ){return ͼ.GetPosition()+ͼ.WorldMatrix.Forward*ʸ;}}class ˊ{public long ˋ;int ʽ;public string ư;public long ˌ;public
+Vector3D?ˍ{get;private set;}public Vector3D?ˎ;public Vector3D?ː;public MatrixD?ˬ;public BoundingBoxD?ˑ;public int?ˠ;public
+MyDetectedEntityType?ˡ{get;set;}public delegate void ˢ();public event ˢ ˣ;public long ˤ;public ˊ(int ʽ,string Z,int?ˉ){this.ʽ=ʽ;ư=Z;ˠ=ˉ;}
+public void ˈ(Vector3D Ɉ,long ˇ){ˍ=Ɉ;ˋ=ˇ;}public bool ˆ(){if(ˍ.HasValue&&(!ˠ.HasValue||(Ô-ˋ<ˠ)))return true;return false;}
+public bool ˁ(){return ˍ.HasValue&&ˠ.HasValue&&(Ô-ˋ>ˠ);}public void ˀ(int ʿ){if((ˋ!=0)&&ˠ.HasValue&&(ʿ-ˋ>ˠ.Value))ϱ();}public
+void ʾ(int Ŭ,int ʽ){if((ˎ.HasValue)&&(ˎ.Value.Length()>double.Epsilon)&&(Ŭ-ˋ)>0){ˍ+=ˎ*(Ŭ-ˋ)*ʽ/60;Б.Д++;}}public void ʼ(
+string[]ʻ,int ʺ,Func<string[],ϯ>Ͱ){try{if(ʻ[2]=="invalidate"){ϱ();}else{var ʹ=Ͱ(ʻ);if(ʹ.Ϯ.HasValue){if(!ˎ.HasValue)ˎ=ʹ.Ϯ;var Ω
+=ʺ-ˋ;if(Ω>0)ː=(ʹ.Ϯ.Value-ˎ.Value)*60/Ω;ˎ=ʹ.Ϯ;}if(ʹ.ϭ.HasValue)ˬ=ʹ.ϭ;if(ʹ.Ϭ.HasValue)ˑ=ʹ.Ϭ;if(ʹ.ğ.HasValue)ˡ=ʹ.ğ;ˈ(ʹ.Ɉ.
+Value,ʺ);Б.К++;}}catch{throw(new Exception("PV fail, cmdString: "+string.Join(":",ʻ)));}}public enum ϲ:byte{ϳ=1,ϴ=2,ϵ=4}bool
+Ϸ(ϲ ϸ,ϲ Ϲ){return(ϸ&Ϲ)==Ϲ;}public void Ϻ(long Ё,MyTuple<MyTuple<string,long,long,byte,byte>,Vector3D,Vector3D,MatrixD,
+BoundingBoxD>ϻ,int ϼ){var Ͻ=ϻ.Item1;ư=Ͻ.Item1;ˌ=Ͻ.Item2;ˡ=(MyDetectedEntityType)Ͻ.Item4;ϲ Ͼ=(ϲ)Ͻ.Item5;ˈ(ϻ.Item2,ϼ);if(Ϸ(Ͼ,ϲ.ϳ)){var
+Ͽ=ϻ.Item3;if(!ˎ.HasValue)ˎ=Ͽ;ː=(Ͽ-ˎ.Value)*60/ʽ;ˎ=Ͽ;}if(Ϸ(Ͼ,ϲ.ϴ))ˬ=ϻ.Item4;if(Ϸ(Ͼ,ϲ.ϵ))ˑ=ϻ.Item5;ˤ=Ё;Б.К++;}public
+MyTuple<MyTuple<string,long,long,byte,byte>,Vector3D,Vector3D,MatrixD,BoundingBoxD>Ѐ(){var Ђ=0|(ˎ.HasValue?1:0)|(ˬ.HasValue?2:0
+)|(ˑ.HasValue?4:0);var Ê=new MyTuple<MyTuple<string,long,long,byte,byte>,Vector3D,Vector3D,MatrixD,BoundingBoxD>(new
+MyTuple<string,long,long,byte,byte>(ư,ˌ,DateTime.Now.Ticks,(byte)MyDetectedEntityType.LargeGrid,(byte)Ђ),ˍ.Value,ˎ??Vector3D.
+Zero,ˬ??MatrixD.Identity,ˑ??new BoundingBoxD());return Ê;}public void ϱ(){ˍ=null;ˎ=null;ˬ=null;ˑ=null;var ϰ=ˣ;if(ϰ!=null)ˣ()
+;Б.Ж++;}}struct ϯ{public Vector3D?Ɉ;public Vector3D?Ϯ;public MatrixD?ϭ;public BoundingBoxD?Ϭ;public MyDetectedEntityType?
+ğ;public bool ϫ;public void ɋ(ˊ Ǔ){Ɉ=Ǔ.ˍ;Ϯ=Ǔ.ˎ;ϭ=Ǔ.ˬ;Ϭ=Ǔ.ˑ;ğ=Ǔ.ˡ;ϫ=true;}}static void Ϫ(IMyTimerBlock Y){Y.
+GetActionWithName("TriggerNow").Apply(Y);}static IEnumerable<string>ϩ(IMyTerminalBlock Y){return Y.CustomName.Trim().Split('[').Select(Ñ
+=>Ñ.Trim(']'));}static bool Ѓ(string В,ref Vector3D õ){string[]Ñ=В.Split(':');if((Ñ.Length<5)||(Ñ[0]!="GPS"))return false;
+Vector3D Ű;if(!double.TryParse(Ñ[2],out Ű.X))return false;if(!double.TryParse(Ñ[3],out Ű.Y))return false;if(!double.TryParse(Ñ[4
+],out Ű.Z))return false;õ=Ű;return true;}static string Џ(params Vector3D[]А){return string.Join(":",А.Select(Ǖ=>string.
+Format("{0}:{1}:{2}",Ǖ.X,Ǖ.Y,Ǖ.Z)));}static Г Б;struct Г{public int К;public int Д;public int Е;public int Ж;public int З;}
+static class И{public static bool Й(Vector3D Л,Vector3D Ñ,BoundingSphereD ω,ref Vector3D Ў){var X=ω.Center;if(ω.Contains(Ñ)==
+ContainmentType.Contains){Ў=Ñ+Vector3D.Normalize(Ñ-X)*ω.Radius*1.1;return false;}var Ѝ=new RayD(Ñ,Vector3D.Normalize(Л-Ñ));if(Ѝ.
+Intersects(ω).HasValue){ω.Radius*=0.95;var Ќ=Л-ω.Center;var Ű=ω.Radius;var Ћ=new RayD(Ñ,Vector3D.Normalize(Л-Ñ));var Њ=ω.
+Intersects(Ћ);if(Њ.HasValue){var Љ=Vector3D.Cross(-Ћ.Direction,Ќ);var Ј=Vector3D.Cross(Ќ,Љ);var ŋ=Ќ.Length();var Ї=Ű*Ű/ŋ;var І=
+Math.Asin(Ű/ŋ);var Ѕ=Math.Cos(І)*Ű;Ў=X+Ї*Vector3D.Normalize(Ќ)+Ѕ*Vector3D.Normalize(Ј);return true;}}Ў=Л;return false;}
+public static Vector3D Є(Vector3D Ê,Vector3D ɬ,BoundingSphereD Ϩ,double δ){var τ=(Ϩ.Center-ɬ).Length();var Ě=(Ϩ.Center-ɬ)/τ;
+var Ǔ=Ê-ɬ;var υ=Vector3D.ProjectOnPlane(ref Ǔ,ref Ě);ɲ.ɫ($"bearing: {υ.Length()}");var φ=τ-Ϩ.Radius;if(φ<δ)return ɬ-Ě*δ+
+Vector3D.Normalize(υ)*500;return ɬ+υ;}public static Vector3D χ(Vector3D Ê,Vector3D ɬ,BoundingSphereD ω){var ϊ=Ê;var ϋ=Vector3D.
+Normalize(ω.Center-ɬ);if(Vector3D.Dot(ϋ,Vector3D.Normalize(ω.Center-ϊ))>0.9)return ϊ;if(ω.Contains(ɬ)==ContainmentType.Contains)
+return ω.Center+Vector3D.Normalize(ɬ-ω.Center)*ω.Radius*1.1;if(ω.Contains(Ê)==ContainmentType.Contains)Ê=ω.Center+Vector3D.
+Normalize(Ê-ω.Center)*ω.Radius*1.1;var ό=Ê;var ύ=Ê;var ώ=Vector3D.Normalize(Ê-ɬ);RayD Ű;if(Vector3D.Dot(ώ,ϋ)>0)Ű=new RayD(Ê,
+Vector3D.Normalize(ɬ-Ê));else Ű=new RayD(ɬ,Vector3D.Normalize(Ê-ɬ));if(Ű.Intersects(ω).HasValue){if((ɬ-ω.Center).Length()>ω.
+Radius*1.2){Й(ɬ,Ê,ω,ref ό);return ό;}else{Й(Ê,ɬ,ω,ref ύ);return Є(ύ,ɬ,ω,ω.Radius+10);}}else return Ê;}public static Vector3D σ
+(Vector3D ς,Vector3D ρ,BoundingSphereD π){var ο=Vector3D.Normalize(π.Center-ς);if(π.Contains(ς)==ContainmentType.Contains
+)return π.Center-ο*π.Radius;RayD Ű=new RayD(ς,Vector3D.Normalize(ρ-ς));double?ξ=Ű.Intersects(π);if(ξ.HasValue){var ν=
+Vector3D.Cross(Ű.Direction,ο);Vector3D μ;if(ν.Length()<double.Epsilon)ο.CalculatePerpendicularVector(out μ);else μ=Vector3D.
+Cross(ν,-ο);return π.Center+Vector3D.Normalize(μ)*π.Radius;}return ρ;}public static Vector3D λ(Vector3D κ,Vector3D ι,Vector3D
+θ,Vector3D η,Vector3D ζ,bool ε){double ψ=Vector3D.Dot(Vector3D.Normalize(θ-κ),ζ);if(ψ<30)ψ=30;return λ(κ,ι,θ,η,ψ,ε);}
+public static Vector3D λ(Vector3D ϟ,Vector3D ϝ,Vector3D θ,Vector3D η,double ψ,bool ε){double Ϟ=Vector3D.Distance(ϟ,θ);Vector3D
+ų=θ-ϟ;Vector3D Ϡ=Vector3D.Normalize(ų);Vector3D Ϧ=θ;Vector3D ϡ;if(ε){var Ϣ=Vector3D.Reject(ϝ,Ϡ);η-=Ϣ;}if(η.Length()>float
+.Epsilon){ϡ=Vector3D.Normalize(η);var ϣ=Math.PI-Math.Acos(Vector3D.Dot(Ϡ,ϡ));var Ϥ=(η.Length()*Math.Sin(ϣ))/ψ;if(Math.Abs
+(Ϥ)<=1){var ϥ=Math.Asin(Ϥ);var Å=Ϟ*Math.Sin(ϥ)/Math.Sin(ϣ+ϥ);Ϧ=θ+ϡ*Å;}}return Ϧ;}public static Vector3D ϧ(Vector3D Ϝ,
+MatrixD ϛ,MatrixD Ϛ,Vector3D ϙ,float Ϙ){var ϗ=ϛ.Up;var ϖ=Vector3D.ProjectOnPlane(ref Ϝ,ref ϗ);var ϕ=-(float)Math.Atan2(Vector3D
+.Dot(Vector3D.Cross(ϛ.Forward,ϖ),ϗ),Vector3D.Dot(ϛ.Forward,ϖ));ϗ=ϛ.Right;ϖ=Vector3D.ProjectOnPlane(ref Ϝ,ref ϗ);var ϔ=-(
+float)Math.Atan2(Vector3D.Dot(Vector3D.Cross(ϛ.Forward,ϖ),ϗ),Vector3D.Dot(ϛ.Forward,ϖ));float ϓ=0;if(ϙ!=Vector3D.Zero){ϗ=ϛ.
+Forward;ϖ=Vector3D.ProjectOnPlane(ref ϙ,ref ϗ);ϖ=Vector3D.Normalize(ϖ);ϓ=(float)Math.Atan2(Vector3D.Dot(Vector3D.Cross(ϛ.Up,ϖ),
+ϗ),Vector3D.Dot(ϛ.Up,ϖ));}var ή=new Vector3D(ϔ,ϕ,ϓ*Ϙ);var ϒ=Vector3D.TransformNormal(ή,ϛ);var ŋ=Vector3D.TransformNormal(
+ϒ,MatrixD.Transpose(Ϛ));return ŋ;}public static void ȷ(IMyGyro ϑ,Vector3 ϐ,Vector3D Ϗ,Vector3D ί){float ʚ=ϐ.Y;float ɓ=ϐ.X
+;float Ȫ=ϐ.Z;var ȫ=ϑ.CubeGrid.GridSizeEnum==MyCubeSize.Large?30:60;var Ȭ=GRID_ANGULAR_ACCELERATIONS;double ȭ=2*Math.PI/
+60f;Func<double,double,double,double,double>Ȯ=(Ê,ȯ,ȴ,ŋ)=>{var Ȱ=Ê<0?ȯ-ȴ:ȴ-ȯ;Ȱ=Math.Max(Ȱ,0);var ȱ=Math.Abs(Ê);double Ű;if(ȱ
+>Ȱ*Ȱ/(2*ŋ))Ű=ȫ*Math.Sign(Ê)*Math.Max(Math.Min(ȱ,1),0.0002);else{Ű=-ȫ*Math.Sign(Ê)*Math.Max(Math.Min(ȱ,1),0.0002);}return
+Ű-ȴ/ȭ;};var Ȳ=(float)Ȯ(ʚ,Ϗ.Y,ί.Y,Ȭ.Y);var ȳ=(float)Ȯ(ɓ,Ϗ.X,ί.X,Ȭ.X);var ȵ=(float)Ȯ(Ȫ,Ϗ.Z,ί.Z,Ȭ.Z);ϑ.SetValue("Pitch",-ȳ);
+ϑ.SetValue("Yaw",Ȳ);ϑ.SetValue("Roll",ȵ);}}class Ȩ{List<ȃ>ȧ;List<ȃ>Ȧ;List<ȃ>ȥ;List<ȃ>Ȥ;List<ȃ>ȣ;List<ȃ>Ȣ;List<ȃ>ȡ;public
+double[]Ƞ=new double[6];bool ȟ;bool Ȟ;public void ȝ(){if(!Ȟ){Ȧ.ForEach(ŋ=>ŋ.Ɣ());ȥ.ForEach(ŋ=>ŋ.Ɣ());Ȥ.ForEach(ŋ=>ŋ.Ɣ());ȣ.
+ForEach(ŋ=>ŋ.Ɣ());Ȣ.ForEach(ŋ=>ŋ.Ɣ());ȡ.ForEach(ŋ=>ŋ.Ɣ());Ȟ=true;}}public BoundingBoxD Ʌ(float ȶ){Vector3D ɀ=new Vector3D(-Ƞ[5]
+,-Ƞ[3],-Ƞ[1])/ȶ;Vector3D Ɂ=new Vector3D(Ƞ[4],Ƞ[2],Ƞ[0])/ȶ;return new BoundingBoxD(ɀ,Ɂ);}public void ɂ(){Ƞ[0]=Ƚ().Ȋ();Ƞ[1]
+=ȼ().Ȋ();Ƞ[2]=Ȼ().Ȋ();Ƞ[3]=Ⱥ().Ȋ();Ƞ[4]=ȸ().Ȋ();Ƞ[5]=ȹ().Ȋ();}public Ȩ(IMyTerminalBlock Ƀ,List<IMyTerminalBlock>Ʉ){
+MatrixD Ȏ=Ƀ.WorldMatrix;Func<Vector3D,List<ȃ>>ɇ=Ò=>{var Ű=Ʉ.Where(Y=>Y is IMyThrust&&Ò==Y.WorldMatrix.Forward).Select(Ê=>Ê as
+IMyThrust).ToList();return Ű.Select(Ã=>new Ȅ(Ã)).Cast<ȃ>().ToList();};Ȧ=ɇ(Ȏ.Backward);ȥ=ɇ(Ȏ.Forward);Ȥ=ɇ(Ȏ.Down);ȣ=ɇ(Ȏ.Up);Ȣ=ɇ(Ȏ.
+Left);ȡ=ɇ(Ȏ.Right);var Ɇ=Ʉ.Where(Y=>Y is IMyArtificialMassBlock).Cast<IMyArtificialMassBlock>().ToList();var ȿ=Ʉ.Where(Y=>Y
+is IMyGravityGenerator).Cast<IMyGravityGenerator>().ToList();Func<Vector3D,bool,List<ȃ>>Ⱦ=(Ò,Ŕ)=>{var õ=ȿ.Where(Y=>Ò==Y.
+WorldMatrix.Up);return õ.Select(Ñ=>new ȇ(Ñ,Ɇ,Ŕ)).Cast<ȃ>().ToList();};Ȧ.AddRange(Ⱦ(Ȏ.Forward,true));ȥ.AddRange(Ⱦ(Ȏ.Forward,false));
+Ȧ.AddRange(Ⱦ(Ȏ.Backward,false));ȥ.AddRange(Ⱦ(Ȏ.Backward,true));Ȥ.AddRange(Ⱦ(Ȏ.Up,true));ȣ.AddRange(Ⱦ(Ȏ.Up,false));Ȥ.
+AddRange(Ⱦ(Ȏ.Down,false));ȣ.AddRange(Ⱦ(Ȏ.Down,true));Ȣ.AddRange(Ⱦ(Ȏ.Right,true));ȡ.AddRange(Ⱦ(Ȏ.Right,false));Ȣ.AddRange(Ⱦ(Ȏ.
+Left,false));ȡ.AddRange(Ⱦ(Ȏ.Left,true));ɂ();ȟ=true;}public Ȩ Ƚ(){ȧ=Ȧ;return this;}public Ȩ ȼ(){ȧ=ȥ;return this;}public Ȩ Ȼ()
+{ȧ=Ȥ;return this;}public Ȩ Ⱥ(){ȧ=ȣ;return this;}public Ȩ ȹ(){ȧ=Ȣ;return this;}public Ȩ ȸ(){ȧ=ȡ;return this;}public void ȷ
+(Vector3D Ǖ,float ȶ){Ȟ=false;Func<ȃ,bool>ȋ=ŋ=>!(ŋ is ȇ);ȼ().Ȃ(-Ǖ.Z/Ƞ[1]*ȶ);Ƚ().Ȃ(Ǖ.Z/Ƞ[0]*ȶ);Ⱥ().Ȃ(-Ǖ.Y/Ƞ[3]*ȶ);Ȼ().Ȃ(Ǖ.Y
+/Ƞ[2]*ȶ);ȹ().Ȃ(-Ǖ.X/Ƞ[5]*ȶ);ȸ().Ȃ(Ǖ.X/Ƞ[4]*ȶ);}public bool Ȃ(double Ȍ,Func<ȃ,bool>ȋ=null){if(ȧ!=null){Ȍ=Math.Min(1,Math.
+Abs(Ȍ))*Math.Sign(Ȍ);foreach(var Ȉ in ȋ==null?ȧ:ȧ.Where(ȋ)){Ȉ.Ȃ(Ȍ);}}ȧ=null;return true;}public float Ȋ(){float ȉ=0;if(ȧ!=
+null){foreach(var Ȉ in ȧ){ȉ+=Ȉ.Ȁ();}}if(ȟ&&(ȉ==0||double.IsNaN(ȉ)))ȉ=1000000;ȧ=null;return ȉ;}}class ȇ:ȃ{IMyGravityGenerator
+õ;List<IMyArtificialMassBlock>Ȇ;bool ȅ;public ȇ(IMyGravityGenerator õ,List<IMyArtificialMassBlock>Ȇ,bool ȅ){this.õ=õ;this
+.Ȇ=Ȇ;this.ȅ=ȅ;}public void Ȃ(double ȁ){if(ȁ>=0)õ.GravityAcceleration=(float)(ȅ?-ȁ:ȁ)*G;}public void Ɣ(){õ.
+GravityAcceleration=0;}public float Ȁ(){return Ȇ.Count*50000*G;}}class Ȅ:ȃ{IMyThrust Ã;public Ȅ(IMyThrust Ã){this.Ã=Ã;}public void Ȃ(double
+ȁ){if(ȁ<=0)Ã.ThrustOverride=0.00000001f;else Ã.ThrustOverride=(float)ȁ*Ã.MaxThrust;}public void Ɣ(){Ã.ThrustOverride=0;Ã.
+Enabled=true;}public float Ȁ(){return Ã.MaxEffectiveThrust;}}interface ȃ{void Ȃ(double ȁ);float Ȁ();void Ɣ();}Ǿ ǿ;class Ǿ{
+public long ǽ;public ק Ǽ;public HashSet<long>ǻ=new HashSet<long>();Ӡ ľ;int Å;int Ƈ;int Ű;Dictionary<long,MyTuple<int,Vector3D>
+>Ê=new Dictionary<long,MyTuple<int,Vector3D>>();bool ƅ;Dictionary<string,int>Ȗ=new Dictionary<string,int>();public Ǿ(int
+ƣ,int ȗ,int Ș,Ӡ B){Å=ƣ;Ƈ=ȗ;Ű=Ș;ľ=B;Ȗ["base-fw"]=100;Ȗ["base-up"]=30;Ȗ["interval"]=50;Ȗ["echelon"]=20;Ȗ["circle"]=350;Ǽ=B.
+ը.ԕ("wingman");}public void ș(string Ț,string ț){int Ǖ;if(int.TryParse(ț,out Ǖ)&&Ȗ.ContainsKey(Ț)){Ȗ[Ț]=ț.Contains('-')||
+ț.Contains('+')?Ȗ[Ț]+Ǖ:Ǖ;}}public void Ķ(int Ŭ){if(!ƅ){var Ȝ=ľ.է.RegisterBroadcastListener("apck.report");if(Ŭ>Å){if(Ŭ<Ƈ)
+{while(Ȝ.HasPendingMessage){Б.Е++;var Ì=Ȝ.AcceptMessage();var Ö=(MyTuple<MyTuple<string,byte,int,long>,Vector3D,Vector3D,
+Vector3D,string>)Ì.Data;if(!Ê.ContainsKey(Ì.Source))Ê.Add(Ì.Source,new MyTuple<int,Vector3D>(Ö.Item1.Item3,Ö.Item2));}}else{var
+ȕ=Ê.Where(Ã=>Ã.Value.Item1==Ű-1).OrderBy(Ã=>(Ã.Value.Item2-ľ.ə).LengthSquared());if(ȕ.Count()>0){var Ȕ=ȕ.First();if((Ȕ.
+Value.Item2-ľ.ə).Length()<ľ.Ӟ.Get<float>("tg-autolink-range")){ǽ=ȕ.First().Key;Ǽ.ѫ();ľ.է.SendUnicastMessage(ǽ,
+"apck.tac.addchild",0);}}ľ.է.DisableBroadcastListener(Ȝ);ƅ=true;}}}}ˊ Ǔ=new ˊ(1,"wingman",null);public void ȓ(){if(ǻ.Count>0){var Ĉ=ľ.Ɯ.ͼ.
+WorldMatrix;var Ȓ=Ĉ.Translation+Ĉ.Forward*Ȗ["base-fw"]+Ĉ.Up*Ȗ["base-up"];int Ě=0;foreach(var ȑ in ǻ){double Ȑ=2*Math.PI/ǻ.Count;
+Func<Vector3D,MatrixD,double,double,Vector3D>ȏ=(Ƕ,Ȏ,Ű,ȍ)=>Ƕ+Ȏ.Right*Math.Cos(Math.PI*(Ô/60f/30f)+ȍ)*Ű+Ȏ.Up*Math.Sin(Math.PI*
+(Ô/60f/30f)+ȍ)*Ű;Vector3D Ɉ;if(ľ.Ú.Ҟ("wingman-circle-rotation"))Ɉ=ȏ(Ȓ,Ĉ,Ȗ["circle"],Ȑ*Ě++);else{Ě=(Ě>0)?Ě*(-1):(Math.Abs(
+Ě)+1);Ɉ=Ȓ+Ĉ.Left*Ě*Ȗ["interval"]+Ĉ.Up*Math.Abs(Ě)*Ȗ["echelon"];}Ǔ.ˈ(Ɉ,Ô);Ǔ.ˎ=ľ.Ɯ.ˎ;Ǔ.ˬ=ľ.Ɯ.ͼ.WorldMatrix;Ǔ.ˑ=new
+BoundingBoxD(ľ.ե.CubeGrid.WorldVolume.Center,new Vector3D(ľ.ե.CubeGrid.WorldVolume.Radius,0,0));ľ.է.SendUnicastMessage(ȑ,
+"apck.ntv.update",Ǔ.Ѐ());}}}}bool ɽ(ɿ ɾ){return(ӡ?.Ԣ&ɾ)==ɾ;}public enum ɿ:byte{ʀ=1,ʁ=2,ʂ=4,ʃ=8}class ʅ{public string ʊ{get;set;}public
+long ʆ{get;set;}}IEnumerable<ʅ>ʇ(string K,long ʈ){var ʉ=K.Split(new[]{"],["},StringSplitOptions.RemoveEmptyEntries).Select(Å
+=>Å.Trim('[',']')).ToList();foreach(var ʋ in ʉ){yield return new ʅ{ʊ=ʋ,ʆ=ʈ};}}class ɼ{public List<IMyShipController>ɻ;ң ķ;
+public ɼ(List<IMyShipController>X,ң Ã){ķ=Ã;ɻ=X;}public Vector3 ɺ(ref MatrixD ɹ){Vector3 Ǵ=new Vector3();if(ķ.Ҟ(
+"ignore-user-thruster"))return Ǵ;var X=ɻ.Where(Ê=>Ê.IsUnderControl).FirstOrDefault();if(X!=null&&(X.MoveIndicator!=Vector3.Zero))return
+Vector3D.TransformNormal(X.MoveIndicator,ɹ*MatrixD.Transpose(X.WorldMatrix));return Ǵ;}}static Ú ɸ<Ú>(Dictionary<string,string>ɷ
+,string Ț){string Ǵ;if((ɷ!=null)&&ɷ.TryGetValue(Ț,out Ǵ)&&!string.IsNullOrEmpty(Ǵ)){if(typeof(Ú)==typeof(string))return(Ú
+)(object)Ǵ;else if(typeof(Ú)==typeof(int?))return(Ú)(object)int.Parse(Ǵ);else if(typeof(Ú)==typeof(long?))return(Ú)(
+object)long.Parse(Ǵ);else if(typeof(Ú)==typeof(float?))return(Ú)(object)float.Parse(Ǵ);}return default(Ú);}ʌ ʄ;class ʌ{public
+HashSet<Vector3I>ʘ=new HashSet<Vector3I>();public List<Ī>ʓ=new List<Ī>();Action<string>Đ;public string ʔ;public List<string>ʕ=
+new List<string>();public ʌ(Action<string>ʖ){Đ=ʖ;}public ʌ ʗ(string ʙ){if(!string.IsNullOrEmpty(ʙ)){ɲ.ɫ(ʙ);var ɷ=ʙ.Split(
+'\n').ToDictionary(Å=>Å.Split('=')[0],Å=>string.Join("=",Å.Split('=').Skip(1)));var Ƈ=ɸ<string>(ɷ,"defs");if(Ƈ!=null){var ʎ=
+Ƈ.Split(new[]{'|'},StringSplitOptions.RemoveEmptyEntries);foreach(var Ö in ʎ){var Ê=Ö.Split(':');ʘ.Add(new Vector3I(int.
+Parse(Ê[0]),int.Parse(Ê[1]),int.Parse(Ê[2])));}}Ƈ=ɸ<string>(ɷ,"navs-nodes");if(Ƈ!=null){var ʎ=Ƈ.Split(new[]{'|'},
+StringSplitOptions.RemoveEmptyEntries);ʓ=new List<Ī>(ʎ.Length);foreach(var Ö in ʎ){var Ê=Ö.Split(':');var Ñ=new Vector3D(double.Parse(Ê[0]
+),double.Parse(Ê[1]),double.Parse(Ê[2]));ʓ.Add(new Ī(){Ĩ=Ñ});}Ƈ=ɸ<string>(ɷ,"navs-links");if(Ƈ!=null){foreach(var Ö in Ƈ.
+Split(new[]{'|'},StringSplitOptions.RemoveEmptyEntries)){var Ê=Ö.Split(':');var ŋ=ʓ.ElementAt(int.Parse(Ê[0]));var Y=ʓ.
+ElementAt(int.Parse(Ê[1]));var ʒ=(ŋ.Ĩ-Y.Ĩ).Length();ŋ.ħ.Add(new MyTuple<Ī,double>(Y,ʒ));Y.ħ.Add(new MyTuple<Ī,double>(ŋ,ʒ));}}Ƈ=ɸ
+<string>(ɷ,"navs-entries");if(Ƈ!=null){foreach(var Q in Ƈ.Split(new[]{'|'},StringSplitOptions.RemoveEmptyEntries)){ʓ[int.
+Parse(Q)].ĩ=true;}}}Ƈ=ɸ<string>(ɷ,"saved-task-q");if(Ƈ!=null){var ʎ=Ƈ.Split(new[]{'|'},StringSplitOptions.RemoveEmptyEntries)
+;ʕ.AddRange(ʎ);}ʔ=ɸ<string>(ɷ,"default-task");}return this;}public void ʑ(){Đ(ɔ());}string ʐ(){var ʎ=new List<string>();
+foreach(var Ö in ʘ){ʎ.Add(string.Join(":",string.Format("{0}:{1}:{2}",Ö.X,Ö.Y,Ö.Z)));}return string.Join("|",ʎ);}string ʏ(){var
+ʎ=new List<string>();var ʍ=new List<string>();var ɶ=new List<string>();foreach(var Ê in ʓ){ʎ.Add(string.Join(":",string.
+Format("{0}:{1}:{2}",Ê.Ĩ.X,Ê.Ĩ.Y,Ê.Ĩ.Z)));if(Ê.ĩ){ɶ.Add(ʓ.IndexOf(Ê).ToString());}foreach(var Y in Ê.ħ){ʍ.Add(string.Join(":",
+string.Format("{0}:{1}",ʓ.IndexOf(Ê),ʓ.IndexOf(Y.Item1))));}}return
+$"navs-nodes={string.Join("|",ʎ)}\nnavs-links={string.Join("|",ʍ)}\nnavs-entries={string.Join(" | ",ɶ)}";}string ɔ(){string[]ɕ=new string[]{"defs="+ʐ(),"ts="+DateTime.Now.ToShortDateString(),"default-task="+ʔ,"saved-task-q="
++string.Join("|",ʕ),ʏ()};return string.Join("\n",ɕ);}public override string ToString(){return ɔ();}}ɗ ɖ;class ɗ{public
+bool ɘ=>ɠ;public Vector3D ə=>ɢ;public Vector3D ɚ=>ɒ;public bool ɡ=true;public MyDetectedEntityInfo ɛ=>ɑ;public string ɜ=>
+"TurretAiTargeter";public Action<ˊ>ɝ;public ˊ ɞ=new ˊ(1,"tdesignator",12);public int ɟ;bool ɠ;Vector3D ɢ;Vector3D ɒ;MyDetectedEntityInfo ɑ
+;HashSet<IMyLargeTurretBase>ɐ=new HashSet<IMyLargeTurretBase>();Func<MyDetectedEntityInfo,bool>ɏ;Func<IMyEntity>Ɏ;Ӡ ľ;
+public void ɍ(Ӡ B){ľ=B;foreach(var X in B.թ){ɐ.Add(X);}ɏ=ɯ;}public void Ɍ(Func<MyDetectedEntityInfo,bool>ƅ){ɏ=ƅ;}public void ɋ
+(int Ŭ){bool Ɋ=false;ɠ=false;if(!ɡ)return;Vector3D ɉ=Ɏ?.Invoke()?.WorldMatrix.Forward??Vector3D.Zero;foreach(var Ö in ɐ.
+Where(Ê=>Ê.HasTarget)){var Q=Ö.GetTargetedEntity();if(!Q.IsEmpty()){if(Ɋ){ɠ=true;}else if(ɉ.IsZero()||(Vector3D.Dot(Vector3D.
+Normalize(Q.Position-Ö.GetPosition()),ɉ)>ľ.Ӟ.Get<float>("turret-ai-cone"))){Ɋ=true;if(ɏ!=null)Ɋ=ɏ(Q);if(!Ɋ)ɟ++;if(Ɋ){ɠ=true;ɒ=Q.
+Velocity;ɑ=Q;if(ľ.Ú.Ҟ("aim-to-center")){ɢ=Q.BoundingBox.Center;}else{ɢ=Q.HitPosition.Value;}}else{ɠ=false;Ö.
+ResetTargetingToDefault();}}else Ö.ResetTargetingToDefault();}}if(ɠ){ɞ.ˈ(ə,Ô);ɞ.ˎ=ɚ;ɞ.ˑ=ɑ.BoundingBox;ɞ.ˬ=ɑ.Orientation;ɞ.ˌ=ɑ.EntityId;ɞ.ˡ=ɑ.
+Type;ɝ?.Invoke(ɞ);}}long ɱ;Vector3D ɭ;int ɮ;bool ɯ(MyDetectedEntityInfo Ê){bool Ǵ=true;var ɰ=ľ.Ӟ.Get<float>("filtering-size"
+);if(ɰ<=0||ɰ<=Ê.BoundingBox.Extents.Length())Ǵ=true;else{Ǵ=false;}if(ľ.Ú.Ҟ("freefall-target-filter")){if(ɱ==Ê.EntityId){
+if(Ê.Velocity.LengthSquared()>0){var Ȭ=(Ê.Velocity-ɭ)*60;if((Ȭ==Vector3D.Zero)||(ľ.Ɯ.Η.HasValue&&(ľ.Ɯ.Η.Value==Ȭ))){ɮ++;}
+if(ɮ>10){ɲ.ɧ($"inert filter fails");Ǵ=false;}}}else{ɱ=Ê.EntityId;ɭ=Ê.Velocity;ɮ=0;}}return Ǵ;}}static class ɲ{static
+string ɴ="";static Action<string>Ƈ;static IMyTextSurface Ñ;static IMyTextPanel ɳ;static IMyTextSurface È;public static double
+Ú;public static void ź(Action<string>ɵ,IMyGridTerminalSystem õ,IMyProgrammableBlock ɬ){Ƈ=ɵ;Ñ=ɬ.GetSurface(0);Ñ.
+ContentType=ContentType.TEXT_AND_IMAGE;Ñ.WriteText("");ɳ=õ.GetBlockWithName("LCD Echo")as IMyTextPanel;}public static void ɫ(string
+Å){if((ɴ=="")||Å.Contains(ɴ))Ƈ(Å);if(ɳ!=null)ɩ(Å);}static string ɪ="";public static void ɩ(string Å){ɪ+=Å+"\n";}static
+List<string>ɨ=new List<string>();public static void ɧ(string Å){Ñ.WriteText($"{Ô}: {Å}\n",true);if(È!=null){ɨ.Add(Å);}}
+public static void ɦ(){È?.WriteText("");ɨ.Clear();}public static void ɥ(IMyTextSurface Å){È=Å;}public static void ɤ(){if(!
+string.IsNullOrEmpty(ɪ)){ɳ?.WriteText(ɪ);ɪ="";}if(ɨ.Any()){if(È!=null){ɨ.Reverse();var Ã=string.Join("\n",ɨ)+"\n"+È.GetText();
+var B=LOGGER_MAX_CHARS;if(Ã.Length>B)Ã=Ã.Substring(0,B-1);È.WriteText($"{Ú:f2}: {Ã}");}ɨ.Clear();}}public static Action<
+string>շ;public static Action ɣ;}
